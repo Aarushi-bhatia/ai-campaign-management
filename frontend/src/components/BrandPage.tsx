@@ -157,10 +157,15 @@ function ReadingStatus({ brand }: { brand: Brand }) {
     return <p className="mt-1 text-sm text-red-600">Reading failed: {brand.error}. Use Read again to retry.</p>;
   }
   const failed = brand.documents.filter((doc) => doc.card_error || doc.facts_error).length;
+  // An image whose rights couldn't be checked is blocked until the next read, so say so.
+  const unchecked = brand.images.filter((image) => image.notes === null).length;
   return (
     <p className="mt-1 text-sm text-stone-500">
       {brand.documents.length} documents, {brand.other_files.length} other files · {costLine}
       {failed > 0 && <span className="text-amber-700"> · {failed} documents had errors, use Read again</span>}
+      {unchecked > 0 && (
+        <span className="text-amber-700"> · {unchecked} images couldn't be checked and are blocked, use Read again</span>
+      )}
     </p>
   );
 }

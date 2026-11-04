@@ -167,7 +167,8 @@ class Conflict(TimestampMixin, Base):
     """Documents in charge of the conflict's topic."""
     winner_file_id: Mapped[int | None] = mapped_column(ForeignKey("brand_files.id", ondelete="SET NULL"))
     rule: Mapped[str] = mapped_column(String(30))
-    """Which rule picked the winner: replaces, owner, approved, newer, live, you or needs_human."""
+    """Which rule picked the winner: replaces, owner, approved, newer, live, you or needs_human; only_side_left
+    or not_counting when a document's type changed so that at most one side still carries facts."""
     reason: Mapped[str] = mapped_column(Text)
     call_id: Mapped[int | None] = mapped_column(ForeignKey("ai_calls.id", ondelete="SET NULL"))
 

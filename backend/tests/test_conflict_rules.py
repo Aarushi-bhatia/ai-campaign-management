@@ -128,3 +128,15 @@ def test_documents_that_agree_do_not_compete():
     assert verdict.rule == "replaces"
     assert verdict.winner_file_id in (2, 3, 4)
     assert verdict.reason == "guidelines-v3.md has been replaced; guidelines-2026.md has not."
+
+
+def test_an_internal_document_never_wins_as_in_charge():
+    """When the only document named in charge was internal, the owner rule fell back to it, and it won (#2)."""
+    notes = Candidate(7, "internal/notes.md", "current", "2026-05-01", internal=True)
+    guide = Candidate(8, "pricing-guide.md", "current", "2026-01-01")
+
+    verdict = _pick([notes, guide], owners=[7], topic="pricing")
+
+    assert (verdict.winner_file_id, verdict.rule) == (8, "owner")
+    assert "internal/notes.md is internal, so not in charge of what is said in public" in verdict.reason
+    assert "is in charge of pricing" not in verdict.reason

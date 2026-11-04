@@ -215,9 +215,7 @@ class BrandReader:
     def _extract_facts(self, brand_id: int) -> None:
         with self.sessions() as session:
             documents = _documents(session, brand_id)
-            no_longer = [d.id for d in documents if d.doc_type not in facts.DOC_TYPES_WITH_FACTS]
-            session.execute(delete(Fact).where(Fact.file_id.in_(no_longer)))
-            session.commit()
+            # A document whose type no longer carries facts keeps them, unused (see facts.DOC_TYPES_WITH_FACTS).
             pending = [d.id for d in documents if d.doc_type in facts.DOC_TYPES_WITH_FACTS and _needs_facts(d)]
             entities = _entities(session, brand_id)
         vocabulary = names.vocabulary(entities)
@@ -276,7 +274,9 @@ class BrandReader:
             documents = {d.id: d for d in _documents(session, brand_id)}
             rows = list(
                 session.scalars(
-                    select(Fact).where(Fact.brand_id == brand_id, Fact.subject_key == subject_key).order_by(Fact.id)
+                    select(Fact).join(BrandFile, BrandFile.id == Fact.file_id)
+                    .where(Fact.brand_id == brand_id, Fact.subject_key == subject_key,
+                           BrandFile.doc_type.in_(facts.DOC_TYPES_WITH_FACTS)).order_by(Fact.id)
                 )
             )
             views = [conflicts.FactView(f.id, f.file_id, f.attribute, f.value, f.kind, f.scope) for f in rows]
@@ -369,7 +369,7 @@ def _fact_groups(session: Session, brand_id: int) -> dict[str, tuple[str, list[i
     rows = session.execute(
         select(Fact.subject_key, Fact.file_id, BrandFile.sha256, Fact.attribute, Fact.value, Fact.kind)
         .join(BrandFile, BrandFile.id == Fact.file_id)
-        .where(Fact.brand_id == brand_id)
+        .where(Fact.brand_id == brand_id, BrandFile.doc_type.in_(facts.DOC_TYPES_WITH_FACTS))
     )
     by_subject: dict[str, list] = defaultdict(list)
     for subject_key, file_id, sha, attribute, value, kind in rows:

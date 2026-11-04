@@ -6,6 +6,7 @@ from dataclasses import asdict
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.brand import facts as fact_types
 from app.brand.images.library import image_views, rules_for
 from app.brand.images.notes import ASSET_CHANNELS
 from app.brand.images.picking import AssetSpec, blocked_reason
@@ -39,7 +40,7 @@ def brand_view(session: Session, brands: BrandService, brand: Brand) -> BrandOut
         documents=[
             DocumentOut(
                 id=d.id, path=d.path, tokens=(d.basics or {}).get("tokens", 0), sections=sections.get(d.id, 0),
-                facts=fact_counts.get(d.id, 0), basics=d.basics, card=d.card, card_error=d.card_error,
+                facts=fact_counts.get(d.id, 0) if fact_types.counts(d.doc_type) else 0, basics=d.basics, card=d.card, card_error=d.card_error,
                 card_call_id=d.card_call_id, facts_error=d.facts_error, facts_call_id=d.facts_call_id,
                 doc_type=d.doc_type, status=d.status, status_reason=d.status_reason,
                 replaced_by=path_of.get(d.replaced_by_id) if d.replaced_by_id else None,

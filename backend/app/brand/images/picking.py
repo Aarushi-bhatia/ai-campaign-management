@@ -85,10 +85,12 @@ def blocked_reason(image: ImageView, spec: AssetSpec, rules: dict[str, Any]) -> 
         return "You marked it not usable."
     if image.path in spec.exclude_paths:
         return "Left out by the campaign."
-    if image.usable_override != "yes":
-        reason = _restriction_reason(image, spec.channel)
-        if reason:
-            return reason
+    # "Usable: yes" overrules the notes' verdict on the image (usable, retired, expired), not the channels the
+    # notes limit it to, nor the channel's own rules below.
+    reason = _channel_limit(image, spec.channel) if image.usable_override == "yes" else \
+        _restriction_reason(image, spec.channel)
+    if reason:
+        return reason
     if spec.slot != "main":
         return None
     return _channel_reason(image, spec.channel, rules.get(spec.channel, {}))
@@ -109,13 +111,21 @@ def split(images: list[ImageView], spec: AssetSpec, rules: dict[str, Any]) -> tu
 def _restriction_reason(image: ImageView, channel: str) -> str | None:
     notes = image.notes
     if notes is None:
-        return "Its rights and restrictions haven't been read yet."
+        return "Its rights and restrictions haven't been checked yet (or couldn't be): use Read again."
     if not notes["usable"]:
         return notes["reason"]
     if notes["retired"]:
         return "It is retired."
     if notes["expired"]:
         return "It has expired."
+    return _channel_limit(image, channel)
+
+
+def _channel_limit(image: ImageView, channel: str) -> str | None:
+    """The channels the image's own notes limit it to or rule out."""
+    notes = image.notes
+    if notes is None:
+        return None
     if notes["allowed_channels"] and channel not in notes["allowed_channels"]:
         return f"Only for {', '.join(notes['allowed_channels'])}."
     if channel in notes["blocked_channels"]:
@@ -168,6 +178,7 @@ def library_text(candidates: list[ImageView]) -> str:
         f"[{i.id}] {i.image_type} | {i.width}x{i.height} | {i.title or i.path} | {i.description} | "
         f"tags: {', '.join(i.tags) or 'none'}"
         + (f" | conditions: {'; '.join(i.notes['rules'])}" if i.notes and i.notes.get("rules") else "")
+        + (" | must not be cropped" if i.notes and i.notes.get("no_crop") else "")
         for i in candidates
     )
 

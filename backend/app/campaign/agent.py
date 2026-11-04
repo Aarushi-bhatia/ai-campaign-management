@@ -159,7 +159,8 @@ class CampaignAgent:
         if conflict_id not in self.tools.conflicts_seen:
             return {}
         conflict = self.session.get(Conflict, conflict_id)
-        if conflict is None or conflict.brand_id != self.brand.id or conflict.winner_file_id is not None:
+        if conflict is None or conflict.brand_id != self.brand.id or conflict.winner_file_id is not None \
+                or conflict.rule == "not_counting":
             return {}
         facts = {f.id: f for f in self.session.scalars(select(Fact).where(Fact.id.in_(conflict.fact_ids)))}
         paths = {d.id: d.path for d in self._documents()}
@@ -191,8 +192,10 @@ class CampaignAgent:
         return {"summary": summary.strip(), "assets": kept}
 
     def _document(self, path: str) -> BrandFile | None:
+        """A current document, for a quote given as proof: a replaced or archived one proves nothing now."""
         path = path.strip().lstrip("/")
-        return next((d for d in self._documents() if path and (d.path == path or d.path.endswith(path))), None)
+        return next((d for d in self._documents()
+                     if d.status == "current" and path and (d.path == path or d.path.endswith(path))), None)
 
     def _documents(self) -> list[BrandFile]:
         return list(self.session.scalars(
@@ -207,6 +210,7 @@ RULE_PHRASES = {
     "newer": "it is newer",
     "live": "{other} {is} archived",
     "you": "you chose it",
+    "only_side_left": "{other} {is} no longer a type of document whose facts count",
 }
 
 

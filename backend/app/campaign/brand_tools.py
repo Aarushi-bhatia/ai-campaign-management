@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.prompt import TEXT, strict_object
 from app.ai.service import AiService, Tool
+from app.brand import facts as fact_types
 from app.brand import names
 from app.brand.images.library import rules_for
 from app.brand.models import Brand, BrandFile, Conflict, Entity, Fact, Section
@@ -109,9 +110,15 @@ class BrandTools:
         return _dump(out)
 
     def read(self, path: str, heading: str) -> str:
-        doc = next((d for d in self._documents() if d.path == path or d.path.endswith(path.lstrip("/"))), None)
+        documents = self._documents()
+        doc = next((d for d in documents if d.path == path or d.path.endswith(path.lstrip("/"))), None)
         if doc is None:
             return "No such document."
+        if doc.status != "current":
+            # Only current material reaches the agent; a replaced or archived document's text could slip into copy.
+            newer = next((d.path for d in documents if d.id == doc.replaced_by_id), None)
+            return (f"{doc.path} is {doc.status or 'not current'}, so it isn't used for this brand"
+                    + (f"; read {newer} instead." if newer else "."))
         text = doc.text or ""
         if heading:
             sections = self.session.scalars(
@@ -126,7 +133,8 @@ class BrandTools:
         found = []
         facts = {f.id: f for f in self.session.scalars(select(Fact).where(Fact.brand_id == self.brand.id))}
         paths = {d.id: d.path for d in self._documents()}
-        for conflict in self.session.scalars(select(Conflict).where(Conflict.brand_id == self.brand.id)):
+        for conflict in self.session.scalars(select(Conflict).where(Conflict.brand_id == self.brand.id,
+                                                                     Conflict.rule != "not_counting")):
             text = f"{conflict.subject_key} {conflict.topic} {conflict.point}".lower()
             if not any(word in text for word in words):
                 continue
@@ -149,7 +157,7 @@ class BrandTools:
     def _current_facts(self) -> tuple[list[tuple[Fact, BrandFile]], dict[int, int]]:
         """Facts from current documents, minus those that lost a conflict; and, for facts that won a
         conflict, which conflict."""
-        docs = {d.id: d for d in self._documents() if d.status == "current"}
+        docs = {d.id: d for d in self._documents() if d.status == "current" and fact_types.counts(d.doc_type)}
         facts = list(self.session.scalars(select(Fact).where(Fact.brand_id == self.brand.id).order_by(Fact.id)))
         by_id = {f.id: f for f in facts}
         losers: set[int] = set()

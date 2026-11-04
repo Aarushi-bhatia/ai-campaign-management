@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.brand import conflicts as conflict_rules
+from app.brand import facts as fact_types
 from app.brand import summary
 from app.brand.models import Brand, BrandDecision, BrandFile, Conflict, DocLink, Fact
 from app.brand.status import DocView, LinkView, decide_statuses
@@ -44,7 +45,9 @@ def settle(session: Session, brand_id: int) -> None:
             result.status, result.reason, result.replaced_by,
         )
 
-    replaces = {(link.source_id, link.target_id) for link in links if link.effect in ("replaces", "outdated")}
+    # A document the marketer set back to "current" isn't replaced, whatever the links say: corrections win.
+    replaces = {(link.source_id, link.target_id) for link in links
+                if link.effect in ("replaces", "outdated") and corrections.get(link.target_id) != "current"}
     replaces |= {(d.replaced_by_id, d.id) for d in documents if d.replaced_by_id}
     outranking = {link.target_id for link in links if link.effect == "higher_authority"}
     outranked = {link.target_id for link in links if link.effect == "lower_authority"}
@@ -62,7 +65,8 @@ def usable_facts(session: Session, brand_id: int) -> list[tuple[Fact, BrandFile]
     documents = {d.id: d for d in _documents(session, brand_id)}
     usable = {
         doc_id for doc_id, d in documents.items()
-        if d.status == "current" and (d.card or {}).get("safe_to_quote", {}).get("value") != "no"
+        if d.status == "current" and fact_types.counts(d.doc_type)
+        and (d.card or {}).get("safe_to_quote", {}).get("value") != "no"
     }
     facts = {f.id: f for f in session.scalars(select(Fact).where(Fact.brand_id == brand_id).order_by(Fact.id))}
     excluded: set[int] = set()
@@ -112,7 +116,7 @@ def _judge(
 ) -> None:
     facts = {f.id: f for f in session.scalars(select(Fact).where(Fact.id.in_(conflict.fact_ids)))}
     file_ids = sorted({fact.file_id for fact in facts.values()})
-    candidates = [
+    everyone = [
         conflict_rules.Candidate(
             file_id, by_id[file_id].path, by_id[file_id].status or "current",
             (by_id[file_id].card or {}).get("date", {}).get("iso", ""), _is_internal(by_id[file_id]),
@@ -120,16 +124,35 @@ def _judge(
         for file_id in file_ids
         if file_id in by_id
     ]
-    chosen_path = decisions.get(("conflict_winner", conflict_target(conflict.subject_key, [c.path for c in candidates])))
+    # Only documents whose type carries facts take part. One whose type changed away is left out at once, without
+    # waiting for the next read to drop its facts from the conflict; changing it back brings it in again. The
+    # name of a saved choice still lists every document, so the choice keeps matching.
+    candidates = [c for c in everyone if fact_types.counts(by_id[c.file_id].doc_type)]
+    sides = side_of_files(conflict, facts)
+    if len({sides[c.file_id] for c in candidates if c.file_id in sides}) < 2:
+        _no_dispute_left(conflict, candidates, [c for c in everyone if c not in candidates], by_id)
+        return
+    chosen_path = decisions.get(("conflict_winner", conflict_target(conflict.subject_key, [c.path for c in everyone])))
     chosen = next((c for c in candidates if c.path == chosen_path), None)
     if chosen:
         conflict.winner_file_id, conflict.rule, conflict.reason = chosen.file_id, "you", "You chose this on the Brand page."
         return
     verdict = conflict_rules.pick_winner(
-        candidates, conflict.owner_file_ids, conflict.topic, replaces, outranked, outranking,
-        side_of_files(conflict, facts),
+        candidates, conflict.owner_file_ids, conflict.topic, replaces, outranked, outranking, sides,
     )
     conflict.winner_file_id, conflict.rule, conflict.reason = verdict.winner_file_id, verdict.rule, verdict.reason
+
+
+def _no_dispute_left(conflict: Conflict, counting: list, left_out: list, by_id: dict[int, BrandFile]) -> None:
+    """At most one side's documents still carry facts. That side wins (so its facts count again at once), or, when
+    none does, the conflict no longer applies."""
+    why = "; ".join(f"{c.path} is now marked as {by_id[c.file_id].doc_type or 'another type'}" for c in left_out)
+    if counting:
+        conflict.winner_file_id, conflict.rule = counting[0].file_id, "only_side_left"
+        conflict.reason = f"Only {counting[0].path}'s side still counts: {why}, so its facts don't count."
+    else:
+        conflict.winner_file_id, conflict.rule = None, "not_counting"
+        conflict.reason = f"This no longer applies: {why}, so none of these facts count."
 
 
 def _is_internal(document: BrandFile) -> bool:

@@ -1,5 +1,5 @@
 from app.brand.images.channel_rules import DEFAULT_CHANNEL
-from app.brand.images.picking import AssetSpec, ImageView, blocked_reason
+from app.brand.images.picking import AssetSpec, ImageView, blocked_reason, library_text
 
 FINE = {"usable": True, "retired": False, "expired": False, "no_crop": False, "allowed_channels": [],
         "blocked_channels": [], "rules": [], "reason": ""}
@@ -91,4 +91,24 @@ def test_a_campaign_can_leave_images_out():
 def test_an_image_whose_restrictions_havent_been_read_is_blocked():
     unread = ImageView(1, "new.jpg", "", "", "photography", (), 100, 100, False, None)
 
-    assert blocked_reason(unread, _spec(), _rules()) == "Its rights and restrictions haven't been read yet."
+    assert blocked_reason(unread, _spec(), _rules()) == "Its rights and restrictions haven't been checked yet (or couldn't be): use Read again."
+
+
+# Group 5 of the design review (#18)
+
+def test_usable_yes_overrules_the_verdict_but_not_the_images_own_channel_limits():
+    retired = _image(override="yes", retired=True)
+    email_only = _image(override="yes", allowed_channels=["email"])
+    not_for_x = _image(override="yes", blocked_channels=["x"])
+
+    assert blocked_reason(retired, _spec(), _rules()) is None  # the marketer's "yes" stands over the notes' verdict
+    assert blocked_reason(email_only, _spec("linkedin"), _rules()) == "Only for email."  # was usable everywhere
+    assert blocked_reason(not_for_x, _spec("x"), _rules()) == "Not for x."
+    assert blocked_reason(email_only, _spec("email"), _rules()) is None
+
+
+def test_an_image_that_must_not_be_cropped_says_so_to_the_ranking():
+    """no_crop was read from the notes but never used anywhere."""
+    text = library_text([_image(no_crop=True), _image(path="other.jpg")])
+
+    assert text.count("must not be cropped") == 1

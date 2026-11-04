@@ -164,13 +164,17 @@ class ImageSteps:
                 found = notes.checked_notes(reply.text, {i for i, _, _ in batch})
             except (AiCallFailed, ValueError, KeyError):
                 log.exception("Reading image notes failed; they will be tried again on the next read")
-                self.bump(brand_id)
-                return
+                found = {}
+            # Every image in the batch is here because its notes are out of date (its record or the brand's
+            # image rules changed). Notes that couldn't be read again are cleared rather than kept: an old
+            # "usable" must not stand for an image that is now restricted. Until the next read it is blocked.
             for info_id, _, data in batch:
+                row = session.get_one(ImageInfo, info_id)
                 if info_id in found:
-                    row = session.get_one(ImageInfo, info_id)
                     row.notes, row.notes_call_id = found[info_id], reply.call_id
                     row.notes_hash = _hash(notes.NOTES_VERSION, rules_hash, data)
+                else:
+                    row.notes, row.notes_call_id = None, None
             session.commit()
         self.bump(brand_id)
 

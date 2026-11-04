@@ -251,3 +251,26 @@ def test_an_image_that_breaks_a_brand_image_rule_is_blocked(client: TestClient):
     hacker = _images(client, _upload(client))["images/concept-hacker.jpg"]
 
     assert hacker["blocked"] == "Banned motif: hooded hackers."
+
+
+def test_an_image_whose_changed_restrictions_could_not_be_read_is_blocked(client: TestClient, fake_ai: FakeTransport):
+    """The reviewer's probe: the image's record now said "Deprecated", the notes call failed, and the old
+    "usable" notes stayed, with the brand shown as ready (#6)."""
+    brand_id = _upload(client)
+    assert not _images(client, brand_id)["images/hero-team.jpg"]["blocked"]
+
+    def notes_fail(request):
+        if request.output_schema and request.output_schema.name == "image_notes":
+            raise RuntimeError("The AI service is down")
+        return brand_brain.reply(request)
+
+    fake_ai._default = notes_fail
+    records = [{**r, "restrictions": "Deprecated. Retired image, do not use."} if r["filename"] == "hero-team.jpg" else r
+               for r in RECORDS]
+    client.post(f"/api/brands/{brand_id}/files", files=[("files", ("acme/images/metadata.json", json.dumps(records).encode()))])
+
+    brand = client.get(f"/api/brands/{brand_id}").json()
+    hero = _images(client, brand_id)["images/hero-team.jpg"]
+    assert brand["status"] == "ready"
+    assert hero["notes"] is None and "couldn't be" in hero["blocked"]  # was still usable
+    assert _images(client, brand_id)["images/office-desk.jpg"]["notes"] is not None  # unchanged images keep theirs

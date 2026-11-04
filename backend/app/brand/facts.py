@@ -12,6 +12,12 @@ from app.brand.evidence import Document
 
 FACT_VERSION = 1
 DOC_TYPES_WITH_FACTS = {"rule", "reference", "case_study", "press", "internal_note"}
+"""Only these documents' facts count. A document whose type changes away keeps its facts, unused, so changing
+it back brings them back at once, without reading it again."""
+
+
+def counts(doc_type: str | None) -> bool:
+    return doc_type in DOC_TYPES_WITH_FACTS
 MAX_FACTS = 100
 KINDS = ("must", "must_not", "may", "fact")
 

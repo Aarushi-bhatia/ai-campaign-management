@@ -243,7 +243,7 @@ export type Conflict = {
   subject: string;
   point: string;
   topic: string;
-  rule: "replaces" | "owner" | "approved" | "newer" | "live" | "you" | "needs_human";
+  rule: "replaces" | "owner" | "approved" | "newer" | "live" | "you" | "needs_human" | "only_side_left" | "not_counting";
   reason: string;
   winner: string | null;
   owners: string[];

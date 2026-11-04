@@ -10,6 +10,8 @@ const RULE_LABELS: Record<Conflict["rule"], string> = {
   live: "Live beats archived",
   you: "Chosen by you",
   needs_human: "Needs your decision",
+  only_side_left: "Only one side still counts",
+  not_counting: "No longer applies",
 };
 
 type Props = {

@@ -192,7 +192,8 @@ def pick_winner(
         return c.status != "replaced" and not any((other.file_id, c.file_id) in replaces for other in remaining)
 
     def in_charge(c: Candidate) -> bool:
-        return (c.file_id in owner_ids or c.file_id in outranking) and c.file_id not in outranked
+        # An internal document is never in charge of what is said in public, even when it is the only one named.
+        return not c.internal and (c.file_id in owner_ids or c.file_id in outranking) and c.file_id not in outranked
 
     def explain_replaced(w: Candidate, losers: list[Candidate]) -> str:
         if all((w.file_id, c.file_id) in replaces for c in losers):

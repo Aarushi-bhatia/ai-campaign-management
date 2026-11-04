@@ -71,6 +71,8 @@ class AssetSpec:
     """main (the asset's lead image, where the channel's rules apply) or inline."""
     campaign_rules: str = ""
     exclude_paths: frozenset[str] = frozenset()
+    excluded_types: frozenset[str] = frozenset()
+    """Image types the campaign's brief rules out, from its plan."""
     used_paths: frozenset[str] = frozenset()
     """Images other assets of the campaign already use. Not blocked: the ranking prefers others when they fit as well."""
     recent_paths: frozenset[str] = frozenset()
@@ -85,6 +87,8 @@ def blocked_reason(image: ImageView, spec: AssetSpec, rules: dict[str, Any]) -> 
         return "You marked it not usable."
     if image.path in spec.exclude_paths:
         return "Left out by the campaign."
+    if image.image_type in spec.excluded_types:
+        return f"The campaign's brief rules out {image.image_type.replace('_', ' ')} images."
     # "Usable: yes" overrules the notes' verdict on the image (usable, retired, expired), not the channels the
     # notes limit it to, nor the channel's own rules below.
     reason = _channel_limit(image, spec.channel) if image.usable_override == "yes" else \

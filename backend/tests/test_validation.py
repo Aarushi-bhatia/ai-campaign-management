@@ -1,7 +1,10 @@
-"""Inputs and stage changes are checked at the API, not only in the UI or on the AI's path. Regression tests for
-Group 6 of the design review (and the channel part of Group 7). Fake AI and fake web search only."""
+"""Inputs and stage changes are checked at the API, not only in the UI or on the AI's path, and rules are taken
+from structured answers, not wording. Regression tests for Groups 6 and 7 of the design review. Fake AI and fake
+web search only."""
 
 from types import SimpleNamespace
+
+import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,6 +12,8 @@ from sqlalchemy import select
 
 from app.ai.fake import FakeTransport
 from app.ai.transport import AiRequest
+from app.brand.images import library
+from app.brand.images.picking import PickResult
 from app.campaign.agent import _options, at_least_two, channels_mentioned, plan_problem
 from app.campaign.models import Campaign
 from app.campaign.research import CampaignResearch
@@ -237,3 +242,80 @@ def test_an_upload_with_a_file_that_is_also_a_folder_is_refused_before_anything_
     assert [b["name"] for b in client.get("/api/brands").json()].count("Clash") == 0
     assert client.get(f"/api/brands/{brand}").json()["status"] == "ready"  # not left stuck reading
     assert not list(settings.data_dir.rglob("aaa-first.md"))  # nothing was written
+
+
+# Rules from structured answers, not from wording (Group 7)
+
+def test_the_image_types_a_brief_rules_out_are_on_the_plan_and_block_those_images(client: TestClient,
+                                                                                 monkeypatch: pytest.MonkeyPatch):
+    """The brief's image rules used to be only a hint to the ranking model, so a screenshot could still be
+    picked (#16). An exclusion whose quote isn't in the brief is dropped: it would hide images unseen."""
+    specs = []
+    monkeypatch.setattr(library, "pick", lambda session, ai, brand, spec, **kwargs: specs.append(spec) or PickResult())
+    chat_id = _planned_with(client, f"{BRIEF} No screenshots.")
+
+    assert _campaign(client, chat_id)["plan"]["image_exclusions"] == [
+        {"image_type": "product_screenshot", "quote": "No screenshots"}]
+    client.post(f"/api/chats/{chat_id}/approve")
+    assert specs and all(spec.excluded_types == {"product_screenshot"} for spec in specs)
+
+
+def test_a_wrong_image_exclusion_can_be_removed_on_the_plan(client: TestClient):
+    chat_id = _planned_with(client, f"{BRIEF} No screenshots.")
+    campaign = _campaign(client, chat_id)
+
+    response = client.put(f"/api/chats/{chat_id}/plan", json={
+        "assets": campaign["plan"]["assets"], "base_version": campaign["plan_version"], "image_exclusions": []})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["plan"]["image_exclusions"] == []
+    again = response.json()
+    client.put(f"/api/chats/{chat_id}/plan", json={  # one can't be added this way
+        "assets": again["plan"]["assets"], "base_version": again["plan_version"], "image_exclusions": ["logo"]})
+    assert _campaign(client, chat_id)["plan"]["image_exclusions"] == []
+
+
+def test_a_chat_edit_keeps_the_image_exclusions(client: TestClient):
+    chat_id = _planned_with(client, f"{BRIEF} No screenshots.")
+
+    client.post(f"/api/chats/{chat_id}/messages", json={"content": "Drop the X post"})
+
+    assert [e["image_type"] for e in _campaign(client, chat_id)["plan"]["image_exclusions"]] == ["product_screenshot"]
+
+
+@pytest.mark.parametrize("allowed, warned", [(2, False), (0, True), (None, False)])
+def test_the_hashtag_limit_is_the_number_the_writing_rules_give(client: TestClient, fake_ai: FakeTransport,
+                                                                allowed: int | None, warned: bool):
+    """A wording regex used to decide, and fired on rules that allow hashtags (#14)."""
+    def reply(request: AiRequest):
+        if request.output_schema and request.output_schema.name == "writing_rules":
+            limits = [] if allowed is None else [{"channel": "x", "max": allowed, "quote": "Write short sentences."}]
+            return json.dumps({"banned": [], "old_names": [], "limits": [], "hashtags": limits})
+        return brand_brain.reply(request)
+
+    fake_ai._default = reply
+    chat_id, assets = _written(client)
+    post = next(a for a in assets if a["type"] == "x_post")
+
+    saved = client.put(f"/api/chats/{chat_id}/assets/{post['id']}", json={
+        "content": {**post["content"], "hashtags": ["launch", "widget"]}, "base_version": post["version"]})
+
+    assert saved.status_code == 200, saved.text
+    after = next(a for a in client.get(f"/api/chats/{chat_id}/assets").json() if a["id"] == post["id"])
+    assert any(w["check"] == "hashtags" for w in after["warnings"]) is warned
+
+
+def _planned_with(client: TestClient, brief: str) -> int:
+    chat_id = client.post("/api/chats").json()["id"]
+    client.post(f"/api/chats/{chat_id}/messages", json={"content": brief})
+    return chat_id
+
+
+def test_a_hashtag_limit_is_kept_only_with_its_quote():
+    from app.brand.writing_rules import checked
+    source = "=== LENGTH AND HASHTAG RULES ===\nX | hashtags: 0–2, at the end | x"
+    raw = {"banned": [], "old_names": [], "limits": [], "hashtags": [
+        {"channel": "x", "max": 2, "quote": "hashtags: 0–2, at the end"},
+        {"channel": "linkedin", "max": 0, "quote": "No hashtags on LinkedIn."}]}  # not in the source
+
+    assert checked(raw, source)["hashtags"] == [{"channel": "x", "max": 2}]

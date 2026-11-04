@@ -165,10 +165,11 @@ class CampaignService:
             raise UnknownQuestion("There is no brief waiting to be reviewed; paste it in the chat.")
         return self._guarded_step(chat, campaign, lambda: self._review(chat, campaign, last.content))
 
-    def update_plan(self, chat: Chat, assets: list[dict[str, Any]], base: int | None = None) -> Campaign:
-        """Changes made on the plan cards: delete, reorder, edit a field. No AI. The cards send the whole list, so
-        `base` is the plan version they show: if the plan has moved on since (a chat edit added a card, say),
-        saving would undo that, so nothing is saved."""
+    def update_plan(self, chat: Chat, assets: list[dict[str, Any]], base: int | None = None,
+                    image_exclusions: list[str] | None = None) -> Campaign:
+        """Changes made on the plan cards: delete, reorder, edit a field, remove an image exclusion. No AI. The
+        cards send the whole list, so `base` is the plan version they show: if the plan has moved on since (a chat
+        edit added a card, say), saving would undo that, so nothing is saved."""
         campaign = self._locked(chat)
         stages.require(campaign.stage, stages.PLAN_READY, action="change the plan")
         if base is not None and base != campaign.plan_version:
@@ -183,7 +184,10 @@ class CampaignService:
         problem = plan_problem(checked, self._agent(campaign).channels_in_use())
         if problem:
             raise BadPlan(problem)
-        campaign.plan = {**campaign.plan, "assets": checked}
+        kept = {}
+        if image_exclusions is not None and "image_exclusions" in campaign.plan:
+            kept = {"image_exclusions": [e for e in campaign.plan["image_exclusions"] if e["image_type"] in image_exclusions]}
+        campaign.plan = {**campaign.plan, "assets": checked, **kept}
         campaign.plan_version += 1
         self._research(campaign).relink()  # a deleted card's findings stop counting
         self._session.commit()

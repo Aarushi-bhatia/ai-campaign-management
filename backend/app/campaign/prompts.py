@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from app.ai.prompt import TEXT, TEXT_LIST, OutputSchema, array_of, enum, strict_object
+from app.brand.images.notes import IMAGE_TYPES
 from app.campaign.models import Campaign
 
 ASSET_TYPES = ("email", "linkedin_post", "x_post", "blog_post", "landing_page")
@@ -78,6 +79,9 @@ Leave it "" for most assets; short posts and emails usually need none. Never res
 its products, prices or rules: its documents rule on those. Give assets that need the same facts the \
 same query, so it runs once. The marketer sees and approves the findings before anything is written.
 - Follow the brief rules and the answers. Keep assets that need different audiences apart.
+- image_exclusions: image types the brief or the answers rule out for this campaign's images (for example \
+"no screenshots" rules out product_screenshot), each with the exact words that say so as quote. Leave it \
+empty when they don't rule out a type; the brand's own image rules are applied separately.
 - summary: two or three sentences on the campaign's idea and shape.
 - assumptions: at most five new ones, one short line each.{history}"""
 
@@ -99,7 +103,9 @@ touch, and for new assets.
 - A question: answer it in reply, with change false.
 - Too unclear to act on: ask one short question in ask, with two to four options, and change false.
 
-reply is one or two plain sentences for the marketer saying what you did or answering them."""
+reply is one or two plain sentences for the marketer saying what you did or answering them. The image \
+types the plan keeps off can't be changed here: when the message asks to allow one, say in reply that \
+Allow on the plan does it."""
 
 _QUESTION = strict_object({
     "kind": enum("missing", "unclear", "clash", "conflict"),
@@ -129,9 +135,12 @@ PLAN_CARD = strict_object({
     "draft_for": TEXT,
 })
 
+IMAGE_EXCLUSIONS = array_of(strict_object({"image_type": enum(*IMAGE_TYPES), "quote": TEXT}))
+
 PLAN_SCHEMA = OutputSchema(
     name="campaign_plan",
-    schema=strict_object({"summary": TEXT, "assets": array_of(PLAN_CARD), "assumptions": TEXT_LIST}),
+    schema=strict_object({"summary": TEXT, "assets": array_of(PLAN_CARD), "image_exclusions": IMAGE_EXCLUSIONS,
+                          "assumptions": TEXT_LIST}),
 )
 
 EDIT_SCHEMA = OutputSchema(

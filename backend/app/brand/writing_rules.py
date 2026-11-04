@@ -1,6 +1,6 @@
-"""Rules a plain text search can check in finished copy: banned words, retired names and length limits.
+"""Rules a plain text search can check in finished copy: banned words, retired names, length and hashtag limits.
 
-They come from the brand summary and the brand's length rules, once per brand, and are saved until those
+They come from the brand summary and the brand's length and hashtag rules, once per brand, and are saved until those
 change. Retired names also come straight from the names table, with no AI.
 """
 
@@ -19,11 +19,12 @@ from app.brand.models import Brand, Entity
 from app.brand.settle import usable_facts
 from app.config import ModelSize
 
-RULES_VERSION = 1
+RULES_VERSION = 2
 CHANNELS = ("email", "linkedin", "x", "blog", "landing_page")
 FIELDS = ("subject", "preview_text", "text", "title", "headline", "body", "button_text")
 MAX_FACTS = 120
-_ABOUT_LENGTH = re.compile(r"\b(characters?|chars|words|length|limit|maximum|max|under \d+|at most \d+)\b", re.IGNORECASE)
+_ABOUT_LENGTH = re.compile(r"\b(characters?|chars|words|length|limit|maximum|max|under \d+|at most \d+|hashtags?)\b",
+                           re.IGNORECASE)
 
 INSTRUCTIONS = """\
 You turn a brand's writing rules into a list a simple text search can check in finished marketing copy.
@@ -33,6 +34,9 @@ variant as its own entry (for example "best-in-class" and "best in class"). Incl
 or "". Leave out words that are allowed in some senses or places; a text search can't tell senses apart.
 - old_names: retired or replaced names, with the current name to use.
 - limits: a maximum length for one field on one channel, only where a rule gives a number.
+- hashtags: the most hashtags one post on a channel may have, only where a rule says: 0 when the rule \
+forbids hashtags there, otherwise the number it allows (for example "0–2 hashtags" is 2). A rule that only \
+says where hashtags go, or what they must not contain, gives no number.
 - quote: the exact sentence or table row the rule comes from.
 
 Only use the rules given. Never add general writing advice."""
@@ -46,16 +50,17 @@ SCHEMA = OutputSchema(
             "channel": enum(*CHANNELS), "field": enum(*FIELDS), "max": {"type": "integer"},
             "unit": enum("characters", "words"), "quote": TEXT,
         })),
+        "hashtags": array_of(strict_object({"channel": enum(*CHANNELS), "max": {"type": "integer"}, "quote": TEXT})),
     }),
 )
 
 
 def empty_rules() -> dict[str, Any]:
-    return {"banned": [], "old_names": [], "limits": []}
+    return {"banned": [], "old_names": [], "limits": [], "hashtags": []}
 
 
 def ensure(session: Session, ai: AiService, brand: Brand) -> dict[str, Any]:
-    """The brand's writing rules, worked out again only when the summary or length rules changed."""
+    """The brand's writing rules, worked out again only when the summary or length and hashtag rules changed."""
     length_rules = _length_rules(session, brand.id)
     source = f"{RULES_VERSION}\n{brand.summary or ''}\n" + "\n".join(length_rules)
     digest = hashlib.sha256(source.encode()).hexdigest()
@@ -63,7 +68,8 @@ def ensure(session: Session, ai: AiService, brand: Brand) -> dict[str, Any]:
         return with_names(session, brand)
     rules = empty_rules()
     if brand.summary or length_rules:
-        text = f"=== BRAND SUMMARY ===\n{brand.summary or '(none)'}\n\n=== LENGTH RULES ===\n" + ("\n".join(length_rules) or "(none)")
+        text = (f"=== BRAND SUMMARY ===\n{brand.summary or '(none)'}\n\n=== LENGTH AND HASHTAG RULES ===\n"
+                + ("\n".join(length_rules) or "(none)"))
         reply = ai.complete(
             step="Writing rules", size=ModelSize.MEDIUM, brand_id=brand.id, output_schema=SCHEMA,
             prompt=Prompt(fixed=INSTRUCTIONS, task=[Turn(role="user", content=text)]),
@@ -84,7 +90,9 @@ def checked(raw: dict[str, Any], source: str) -> dict[str, Any]:
            if len(r["old"].strip()) >= 3 and doc.contains(r["quote"])]
     limits = [{k: r[k] for k in ("channel", "field", "max", "unit")} for r in raw["limits"]
               if r["max"] > 0 and doc.contains(r["quote"])]
-    return {"banned": banned, "old_names": old, "limits": limits}
+    hashtags = [{"channel": r["channel"], "max": r["max"]} for r in raw["hashtags"]
+                if r["max"] >= 0 and doc.contains(r["quote"])]
+    return {"banned": banned, "old_names": old, "limits": limits, "hashtags": hashtags}
 
 
 def with_names(session: Session, brand: Brand) -> dict[str, Any]:
@@ -94,13 +102,13 @@ def with_names(session: Session, brand: Brand) -> dict[str, Any]:
     for entity in session.scalars(select(Entity).where(Entity.brand_id == brand.id)):
         for old_name in entity.old_names:
             old.setdefault(old_name["name"].lower(), {"old": old_name["name"], "new": entity.name})
-    return {**rules, "old_names": list(old.values())}
+    return {"hashtags": [], **rules, "old_names": list(old.values())}
 
 
 def _length_rules(session: Session, brand_id: int) -> list[str]:
     lines = []
     for fact, doc in usable_facts(session, brand_id):
         text = f"{fact.subject} | {fact.attribute}: {fact.value}"
-        if fact.kind in ("must", "must_not") and _ABOUT_LENGTH.search(f"{text} {fact.evidence}"):
+        if fact.kind in ("must", "must_not", "may") and _ABOUT_LENGTH.search(f"{text} {fact.evidence}"):
             lines.append(f"{text} | {fact.scope or 'all'} | {doc.path} | {fact.evidence}")
     return lines[:MAX_FACTS]

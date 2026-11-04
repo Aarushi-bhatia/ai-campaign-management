@@ -52,7 +52,7 @@ def review(brief: str, tool_turns=()) -> dict:
 
 def plan(brief: str) -> dict:
     if "every asset type" in brief:
-        return {"summary": "One of each asset type.", "assumptions": [], "assets": [
+        return {"summary": "One of each asset type.", "assumptions": [], "image_exclusions": [], "assets": [
             _asset("a1", "email", "Launch email"), _asset("a2", "linkedin_post", "Launch post"),
             _asset("a3", "x_post", "X launch post"), _asset("a4", "blog_post", "Launch blog"),
             _asset("a5", "landing_page", "Launch page")]}
@@ -63,6 +63,9 @@ def plan(brief: str) -> dict:
         "assets": [_asset("a1", "email", "Launch email", research="email trends" if three else ""),
                    _asset("a2", "linkedin_post", "Launch post", research="widget market size" if three else research),
                    _asset("a3", "x_post", "X launch post", "Platform engineers", research="x trends" if three else "")],
+        "image_exclusions": [{"image_type": "product_screenshot", "quote": "No screenshots"},
+                             {"image_type": "logo", "quote": "no logos anywhere"}]  # the second isn't in the brief
+        if "No screenshots" in brief else [],
         "assumptions": ["No paid media."],
     }
 
@@ -246,7 +249,7 @@ WRITING_REPLIES = {
     "campaign_record": lambda r: {"name": "Widget launch", "goal": "Launch the widget", "audience": "Platform leads",
                                   "angle": "Small and safe"},
     "writing_rules": lambda r: {"banned": [{"term": "synergy", "instead": "", "quote": "Write short sentences."}],
-                                "old_names": [], "limits": []},
+                                "old_names": [], "limits": [], "hashtags": []},
 }
 
 

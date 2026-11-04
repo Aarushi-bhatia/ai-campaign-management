@@ -88,6 +88,15 @@ def test_a_campaign_can_leave_images_out():
     assert blocked_reason(_image(), _spec(exclude=["hero.jpg"]), _rules()) == "Left out by the campaign."
 
 
+def test_an_image_type_the_brief_rules_out_is_blocked_even_when_marked_usable():
+    """The brief's image rules used to be only a hint to the ranking model (#16)."""
+    spec = AssetSpec(channel="email", asset_type="email", message="launch", excluded_types=frozenset({"product_screenshot"}))
+
+    assert blocked_reason(_image(image_type="product_screenshot", override="yes"), spec, _rules()) == (
+        "The campaign's brief rules out product screenshot images.")
+    assert blocked_reason(_image(image_type="photography"), spec, _rules()) is None
+
+
 def test_an_image_whose_restrictions_havent_been_read_is_blocked():
     unread = ImageView(1, "new.jpg", "", "", "photography", (), 100, 100, False, None)
 

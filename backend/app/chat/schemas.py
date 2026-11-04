@@ -57,6 +57,8 @@ class PlanIn(BaseModel):
     assets: list[dict[str, Any]]
     base_version: int | None = None
     """The plan version the cards show. When the plan has moved on since, the change isn't saved."""
+    image_exclusions: list[str] | None = None
+    """The image types still kept off. The plan shows them so a wrong one can be removed; none can be added here."""
 
 
 class AssetVersionOut(BaseModel):

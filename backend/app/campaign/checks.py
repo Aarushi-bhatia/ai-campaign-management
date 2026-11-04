@@ -41,8 +41,8 @@ class CheckRules:
     """Approved research, plus links the brief or the brand's own documents give (such as a product page)."""
     image_problem: str | None = None
     """Why the chosen image can't be used, worked out by the image rules."""
-    no_hashtags: bool = False
-    """The channel's rules forbid hashtags (see `forbids_hashtags`)."""
+    hashtag_max: int | None = None
+    """The most hashtags the channel's rules allow (0: none), from the writing rules; None when they don't say."""
 
 
 def texts_of(content: dict[str, Any]) -> list[tuple[str, str]]:
@@ -90,8 +90,8 @@ def free_checks(asset_type: str, content: dict[str, Any], rules: CheckRules) -> 
                 *_lengths(asset_type, content, rules.limits), *_citations(content, rules.approved_urls)]
     if rules.image_problem:
         problems.append(Problem("image", f"The image can't be used here: {rules.image_problem}"))
-    if rules.no_hashtags:
-        problems += _hashtags(content)
+    if rules.hashtag_max is not None:
+        problems += _hashtags(content, rules.hashtag_max)
     return problems
 
 
@@ -168,29 +168,22 @@ def _field_text(asset_type: str, content: dict[str, Any], field_name: str) -> st
     return value
 
 
-NO_HASHTAGS = re.compile(
-    r"\b(no|zero|without|avoid|never (?:use|add|include|put)|(?:don'?t|do not) (?:use|add|include|put)) hashtags?\b"
-    r"|\bhashtags?\s*[:=\-–—]\s*(?:none|never|not allowed)\b"
-    r"|\bhashtags?\s+(?:are\s+)?(?:not allowed|not used|banned|forbidden|prohibited|never used)",
-    re.IGNORECASE,
-)
 _HASHTAG = re.compile(r"(?<![\w&/])#[A-Za-z]\w*")
 
 
-def forbids_hashtags(channel_rules: list[dict[str, Any]]) -> bool:
-    """True when one of the channel's rules says plainly not to use hashtags: "No hashtags on any account",
-    "Hashtags: none", "Don't add hashtags", "Hashtags are not allowed". Other wordings are left to the AI
-    check, which sees every channel rule."""
-    return any(NO_HASHTAGS.search(rule.get("says", "")) for rule in channel_rules)
-
-
-def _hashtags(content: dict[str, Any]) -> list[Problem]:
-    tags = [t for t in content.get("hashtags") or [] if t.strip()]
+def _hashtags(content: dict[str, Any], maximum: int) -> list[Problem]:
+    """Tags in the hashtags field and in the text, each counted once."""
+    tags = [_hashtag(t.strip()) for t in content.get("hashtags") or [] if t.strip()]
     tags += [m.group(0) for name, text in texts_of(content) if name not in LINK_FIELDS for m in _HASHTAG.finditer(text)]
-    if not tags:
+    seen: dict[str, str] = {}
+    for tag in tags:
+        seen.setdefault(tag.lower(), tag)
+    unique = list(seen.values())
+    if len(unique) <= maximum:
         return []
-    return [Problem("hashtags", f"Uses hashtags ({', '.join(dict.fromkeys(tags))}); the channel rules say no hashtags.",
-                    tags[0])]
+    allowed = "say no hashtags" if maximum == 0 else f"allow at most {maximum}"
+    return [Problem("hashtags", f"Uses {len(unique)} hashtag{'s' if len(unique) > 1 else ''} ({', '.join(unique)}); "
+                                f"the channel rules {allowed}.", unique[0])]
 
 
 def _citations(content: dict[str, Any], approved: frozenset[str]) -> list[Problem]:

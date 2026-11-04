@@ -39,10 +39,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ question_id: questionId, answer }),
     }),
-  updatePlan: (chatId: number, assets: PlanAsset[], baseVersion: number) =>
+  updatePlan: (chatId: number, assets: PlanAsset[], baseVersion: number, imageExclusions?: string[]) =>
     request<Campaign>(`/api/chats/${chatId}/plan`, {
       method: "PUT",
-      body: JSON.stringify({ assets, base_version: baseVersion }),
+      body: JSON.stringify({ assets, base_version: baseVersion, image_exclusions: imageExclusions }),
     }),
   approvePlan: (chatId: number, baseVersion: number) =>
     request<Message[]>(`/api/chats/${chatId}/approve?base_version=${baseVersion}`, { method: "POST" }),

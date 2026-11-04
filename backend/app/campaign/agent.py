@@ -68,7 +68,9 @@ class CampaignAgent:
         task = prompts.PLAN_TASK.format(channels=", ".join(self.channels_in_use()),
                                         history=prompts.HISTORY_NOTE.format(records=history) if history else "")
         reply = self._ask("Campaign plan", task, prompts.PLAN_SCHEMA)
-        return self._checked_plan(reply["summary"], reply["assets"]), _clean(reply["assumptions"])[: prompts.MAX_ASSUMPTIONS]
+        plan = {**self._checked_plan(reply["summary"], reply["assets"]),
+                "image_exclusions": self._checked_exclusions(reply["image_exclusions"])}
+        return plan, _clean(reply["assumptions"])[: prompts.MAX_ASSUMPTIONS]
 
     def edit_plan(self, message: str) -> Edit:
         task = f"{prompts.EDIT_TASK}\n\n=== CURRENT PLAN ===\n{prompts.plan_text(self.campaign.plan or {})}\n\n" \
@@ -83,8 +85,11 @@ class CampaignAgent:
             changed = frozenset(a["id"].strip() for a in reply["plan"]["assets"]
                                 if a.get("research_changed") and a["id"].strip() in current)
             cards = [{k: v for k, v in a.items() if k != "research_changed"} for a in reply["plan"]["assets"]]
-            return Edit(reply["reply"].strip(), plan=self._checked_plan(reply["plan"]["summary"], cards, keep=current),
-                        research_changed=changed)
+            # The image exclusions stay as they are: a chat edit asked to return them stalled the model (most
+            # replies timed out). They are lifted with Allow on the plan.
+            plan = {**self._checked_plan(reply["plan"]["summary"], cards, keep=current),
+                    "image_exclusions": (self.campaign.plan or {}).get("image_exclusions", [])}
+            return Edit(reply["reply"].strip(), plan=plan, research_changed=changed)
         return Edit(reply["reply"].strip())
 
     def channels_in_use(self) -> list[str]:
@@ -190,6 +195,17 @@ class CampaignAgent:
             taken.add(asset_id)
             kept.append({**{k: str(v).strip() for k, v in asset.items()}, "id": asset_id})
         return {"summary": summary.strip(), "assets": kept}
+
+    def _checked_exclusions(self, raw: list[dict[str, str]]) -> list[dict[str, str]]:
+        """Image types the campaign keeps off, each only when its quote is really in the brief or an answer: a hard
+        block on images, so a misread one must not hide images unseen. Shown on the plan."""
+        source = Document("\n".join([self.campaign.brief, *(q.get("answer") or "" for q in self.campaign.questions)]))
+        kept: dict[str, dict[str, str]] = {}
+        for item in raw:
+            quote = item["quote"].strip()
+            if source.contains(quote):
+                kept.setdefault(item["image_type"], {"image_type": item["image_type"], "quote": quote})
+        return list(kept.values())
 
     def _document(self, path: str) -> BrandFile | None:
         """A current document, for a quote given as proof: a replaced or archived one proves nothing now."""

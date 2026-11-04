@@ -5,6 +5,7 @@ import re
 _MARKUP = re.compile(r"[*_`>#|]+")
 _QUOTES = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"', "–": "-", "—": "-"})
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+|\n+")
+_WORD = re.compile(r"[a-z0-9]+")
 
 
 def normalize(text: str) -> str:
@@ -19,6 +20,12 @@ class Document:
 
     def contains(self, quote: str) -> bool:
         return bool(quote.strip()) and normalize(quote) in self._normalized
+
+    def proves(self, quote: str, value: str = "") -> bool:
+        """The quote is in the document and says more than one word, and more than the claimed value alone: a
+        bare "Maren" is in the document, but doesn't show that Maren owns it ("Owner: Maren" does)."""
+        words = set(_WORD.findall(normalize(quote)))
+        return len(words) >= 2 and bool(words - set(_WORD.findall(normalize(value)))) and self.contains(quote)
 
 
 def sentences(text: str) -> list[str]:

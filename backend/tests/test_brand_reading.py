@@ -173,6 +173,27 @@ def test_a_claim_with_an_invented_quote_goes_back_to_unknown(client: TestClient)
     ]
 
 
+def test_a_one_word_quote_or_the_bare_value_is_not_proof():
+    """"Maren" is in the document, so it used to prove that Maren owns it (#24)."""
+    from app.brand.cards import checked_card
+    document = "# Launch notes\n\nOwner: Maren Tolliver\nStatus: draft\nMaren wrote most of this.\n"
+    reply = {"claimed_status": {"value": "draft", "evidence": "draft"},
+             "date": {"as_written": "", "iso": "", "evidence": ""},
+             "owner": {"name": "Maren", "role": "", "evidence": "Maren"},
+             "safe_to_quote": {"value": "unknown", "evidence": ""},
+             "replaces": [], "claims_about_other_documents": []}
+
+    card = checked_card(json.dumps(reply), document)
+    assert card["owner"]["name"] == "" and card["claimed_status"]["value"] == "unknown"
+    assert [u["field"] for u in card["unverified"]] == ["claimed_status", "owner"]
+
+    proved = {**reply, "claimed_status": {"value": "draft", "evidence": "Status: draft"},
+              "owner": {"name": "Maren Tolliver", "role": "", "evidence": "Owner: Maren Tolliver"}}
+    card = checked_card(json.dumps(proved), document)
+    assert card["owner"]["name"] == "Maren Tolliver" and card["claimed_status"]["value"] == "draft"
+    assert card["unverified"] == []
+
+
 def test_documents_are_split_into_sections_with_search_vectors(client: TestClient, fake_ai: FakeTransport):
     documents = _documents_by_path(client, _upload(client).json()["id"])
 

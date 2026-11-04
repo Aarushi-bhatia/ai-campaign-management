@@ -23,7 +23,7 @@ from app.brand.models import Brand, BrandFile
 from app.campaign import prompts, writer
 from app.campaign.brand_tools import BrandTools
 from app.campaign.checker import ai_check
-from app.campaign.checks import (CHANNEL_OF, FREE_CHECKS, LINK, CheckRules, Problem, forbids_hashtags, free_checks,
+from app.campaign.checks import (CHANNEL_OF, FREE_CHECKS, LINK, CheckRules, Problem, free_checks,
                                   is_empty, plain_text)
 from app.campaign.models import Asset, AssetVersion, Campaign
 from app.campaign.research import approved
@@ -311,7 +311,9 @@ class AssetWork:
     def _spec(self, asset: Asset, card: dict[str, Any]) -> AssetSpec:
         return AssetSpec(channel=CHANNEL_OF[asset.type], asset_type=asset.type,
                          message=f"{card.get('main_message', '')} Image idea: {card.get('image_idea', '')}",
-                         campaign_rules=self._campaign_image_rules())
+                         campaign_rules=self._campaign_image_rules(),
+                         excluded_types=frozenset(e["image_type"] for e in
+                                                  (self.campaign.plan or {}).get("image_exclusions", [])))
 
     def _campaign_image_rules(self) -> str:
         """What the brief and its answers say about images, applied on top of the library's own rules."""
@@ -326,7 +328,7 @@ class AssetWork:
             banned=rules["banned"], old_names=rules["old_names"], limits=rules["limits"],
             approved_urls=frozenset(f["url"] for f in approved(self.campaign, asset.plan_id)) | self._known_links(),
             image_problem=self._image_problem(asset),
-            no_hashtags=forbids_hashtags(json.loads(self._channel_rules(asset)).get("rules", [])),
+            hashtag_max=min((r["max"] for r in rules["hashtags"] if r["channel"] == CHANNEL_OF[asset.type]), default=None),
         )
 
     def _known_links(self) -> frozenset[str]:

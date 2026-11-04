@@ -77,20 +77,21 @@ def prompt_for(path: str, basics: dict[str, Any], text: str) -> Prompt:
 def checked_card(raw_reply: str, document: str) -> dict[str, Any]:
     """Parses the model's card and removes every claim whose quote isn't in the document.
 
-    Removed claims are kept under `unverified`, so the Brand page can show what was dropped.
+    Removed claims are kept under `unverified`, so the Brand page can show what was dropped. A quote that is
+    only the claimed value, or a single word, isn't proof (see `Document.proves`).
     """
     card: dict[str, Any] = json.loads(raw_reply)
     source = Document(document)
     unverified: list[dict[str, str]] = []
 
-    def found(evidence: str) -> bool:
-        return source.contains(evidence)
+    def found(evidence: str, value: str = "") -> bool:
+        return source.proves(evidence, value)
 
     def drop(field: str, value: str, evidence: str) -> None:
         unverified.append({"field": field, "value": value, "evidence": evidence})
 
     status = card["claimed_status"]
-    if status["value"] != "unknown" and not found(status["evidence"]):
+    if status["value"] != "unknown" and not found(status["evidence"], status["value"]):
         drop("claimed_status", status["value"], status["evidence"])
         card["claimed_status"] = {"value": "unknown", "evidence": ""}
 
@@ -102,7 +103,7 @@ def checked_card(raw_reply: str, document: str) -> dict[str, Any]:
         date["iso"] = ""
 
     owner = card["owner"]
-    if owner["name"] and not found(owner["evidence"]):
+    if owner["name"] and not found(owner["evidence"], owner["name"]):
         drop("owner", owner["name"], owner["evidence"])
         card["owner"] = {"name": "", "role": "", "evidence": ""}
 

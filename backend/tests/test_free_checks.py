@@ -1,6 +1,6 @@
 """The free checks, tested directly with many edge cases."""
 
-from app.campaign.checks import CheckRules, forbids_hashtags, free_checks
+from app.campaign.checks import CheckRules, free_checks
 
 
 def _post(text: str, hashtags: list[str] | None = None, sources: list[str] | None = None) -> dict:
@@ -144,14 +144,12 @@ def test_an_x_link_counts_as_23_characters():
     assert _checks(post, "x_post", approved_urls=frozenset({link})) == []  # was flagged as too long
 
 
-def test_hashtags_are_flagged_when_the_channel_rules_forbid_them():
-    post = {"author": "Acme", "text": "Leashgate is here. #AIsecurity", "hashtags": ["Kubernetes"]}
+def test_hashtags_are_flagged_only_past_the_number_the_channel_rules_allow():
+    """The limit is the structured number from the writing rules. A wording regex used to fire on rules that allow
+    hashtags, such as "Avoid hashtags mid-sentence; up to two at the end are fine" (#14)."""
+    post = {"author": "Acme", "text": "Leashgate is here. #AIsecurity", "hashtags": ["Kubernetes", "#aisecurity"]}
 
-    for says in ("hashtags: No hashtags on any Wickhold account.", "Hashtags: none", "Don't add hashtags.",
-                 "Hashtags are not allowed on X.", "Never include hashtags.", "Avoid hashtags."):
-        assert forbids_hashtags([{"says": says}]), says
-    for says in ("Use two hashtags at most.", "Hashtags: no more than two.", "Hashtags: 0–2, at the end.",
-                 "Put hashtags at the end."):
-        assert not forbids_hashtags([{"says": says}]), says
-    assert [c for c, _ in _checks(post, "x_post", no_hashtags=True)] == ["hashtags"]
-    assert _checks(post, "x_post") == []
+    assert _checks(post, "x_post", hashtag_max=0) == [("hashtags", "#Kubernetes")]
+    assert _checks(post, "x_post", hashtag_max=2) == []  # #AIsecurity is counted once
+    assert _checks(post, "x_post", hashtag_max=1) == [("hashtags", "#Kubernetes")]
+    assert _checks(post, "x_post") == []  # the rules give no number: left to the AI check

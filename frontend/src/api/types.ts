@@ -54,7 +54,13 @@ export type Campaign = {
   brief: string;
   brief_rules: string[];
   assumptions: string[];
-  plan: { summary: string; assets: PlanAsset[]; failed_searches?: string[] } | null;
+  plan: {
+    summary: string;
+    assets: PlanAsset[];
+    failed_searches?: string[];
+    /** Image types the brief rules out: a hard block on this campaign's images. */
+    image_exclusions?: { image_type: string; quote: string }[];
+  } | null;
   plan_version: number;
   approved_at: string | null;
   research: Finding[];

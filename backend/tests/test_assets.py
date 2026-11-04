@@ -1,5 +1,7 @@
 """Writing, checking and editing assets after approval, through the chat API with a fake AI."""
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -9,6 +11,7 @@ from types import SimpleNamespace
 from sqlalchemy import func, select
 
 from app.ai.fake import FakeTransport
+from app.ai.transport import AiRequest
 from app.ai.models import AiCall
 from app.ai.prompt import Prompt, Turn
 from app.brand.images.picking import AssetSpec, Choice, PickResult, rank_prompt
@@ -787,3 +790,110 @@ def test_a_chat_edit_sees_the_same_channel_rules_and_facts_as_the_first_draft(cl
     assert "=== CHANNEL RULES ===" in edit and "=== FACTS FOR THIS ASSET ===" in edit
     assert _section(edit, "CHANNEL RULES") == _section(write, "CHANNEL RULES")
     assert _section(edit, "FACTS FOR THIS ASSET") == _section(write, "FACTS FOR THIS ASSET")
+
+
+# Group 3 of the design review: undo, restore and failed edits keep the whole earlier state
+
+def _versions(client: TestClient, chat_id: int, asset_id: int) -> list[dict]:
+    return client.get(f"/api/chats/{chat_id}/assets/{asset_id}/versions").json()
+
+
+def _checks_answer(fake_ai: FakeTransport, problems: list[dict]) -> None:
+    default = brand_brain.reply
+    fake_ai._default = lambda request: json.dumps({"problems": problems}) \
+        if request.output_schema and request.output_schema.name == "asset_check" else default(request)
+
+
+def test_undo_after_check_again_shows_what_the_check_found(client: TestClient, brand: int, fake_ai: FakeTransport):
+    """Check again used to update the asset but not its version, so going back to that version brought back
+    the list from before the check."""
+    chat_id = _written(client)
+    linkedin = _assets(client, chat_id)[1]
+    quote = " ".join(linkedin["content"]["text"].split()[:3])
+    url = f"/api/chats/{chat_id}/assets/{linkedin['id']}"
+    _checks_answer(fake_ai, [{"check": "claim", "quote": quote, "problem": "Not in the facts.", "fix": "Cut it."}])
+    client.post(f"{url}/check")
+    fake_ai._default = brand_brain.reply
+    checked = _assets(client, chat_id)[1]
+    client.put(url, json={"content": {**checked["content"], "author": "Mira Holt"}, "base_version": checked["version"]})
+    edited = _assets(client, chat_id)[1]
+
+    client.post(f"{url}/undo?base_version={edited['version']}")
+
+    back = _assets(client, chat_id)[1]
+    assert back["content"] == checked["content"]
+    assert [w["check"] for w in back["warnings"]] == ["claim"]  # was [], as before the check
+    assert _versions(client, chat_id, linkedin["id"])[checked["version"] - 1]["warnings"] == checked["warnings"]
+
+
+def test_a_not_checked_warning_cleared_by_check_again_stays_cleared_after_undo(client: TestClient, brand: int,
+                                                                              fake_ai: FakeTransport):
+    state = {"failed": False}
+
+    def first_check_fails(request: AiRequest):
+        if not state["failed"] and request.output_schema and request.output_schema.name == "asset_check":
+            state["failed"] = True
+            raise RuntimeError("The AI service is down")
+        return brand_brain.reply(request)
+
+    fake_ai._default = first_check_fails
+    chat_id = _written(client)
+    email = _assets(client, chat_id)[0]  # written first, so its check is the one that failed
+    assert [w["check"] for w in email["warnings"]] == ["not checked"]
+    url = f"/api/chats/{chat_id}/assets/{email['id']}"
+    client.post(f"{url}/check")
+    cleared = _assets(client, chat_id)[0]
+    assert cleared["warnings"] == []
+    client.put(url, json={"content": {**cleared["content"], "sender": "Mira Holt"}, "base_version": cleared["version"]})
+
+    client.post(f"{url}/undo?base_version={_assets(client, chat_id)[0]['version']}")
+
+    assert _assets(client, chat_id)[0]["warnings"] == []  # "not checked" used to come back
+
+
+def test_a_chat_edit_whose_checks_fail_is_kept_as_not_checked(client: TestClient, brand: int, fake_ai: FakeTransport):
+    """It used to be paid for, then thrown away with a 502."""
+    chat_id = _written(client)
+    linkedin = _assets(client, chat_id)[1]
+    state = {"failed": False}
+
+    def check_fails(request: AiRequest):
+        if not state["failed"] and request.output_schema and request.output_schema.name == "asset_check":
+            state["failed"] = True
+            raise RuntimeError("The AI service is down")
+        return brand_brain.reply(request)
+
+    fake_ai._default = check_fails
+    response = client.post(f"/api/chats/{chat_id}/messages", json={"content": "Shorten the second post"})
+
+    assert response.status_code == 201, response.text
+    after = _assets(client, chat_id)[1]
+    assert after["version"] == linkedin["version"] + 1 and after["content"]["text"] == "Short."
+    assert [w["check"] for w in after["warnings"]] == ["not checked"]
+    assert _versions(client, chat_id, linkedin["id"])[-1]["reason"] == "chat edit"
+    edit = next(m for m in response.json() if m["kind"] == "edit")
+    assert "its checks couldn't run, so press Check again" in edit["content"]
+
+
+def test_a_wide_edit_lists_every_asset_even_when_one_edit_fails(client: TestClient, brand: int, fake_ai: FakeTransport):
+    chat_id = _written(client)
+    before = _assets(client, chat_id)
+    edits = []
+
+    def second_edit_fails(request: AiRequest):
+        extra = request.output_schema.schema["properties"] if request.output_schema else {}
+        if "changed" in extra:
+            edits.append(request)
+            if len(edits) == 2:
+                raise RuntimeError("The AI service is down")
+        return brand_brain.reply(request)
+
+    fake_ai._default = second_edit_fails
+    response = client.post(f"/api/chats/{chat_id}/messages", json={"content": "Make it shorter everywhere"})
+
+    assert response.status_code == 201, response.text  # was a 502, with the first edit saved but not mentioned
+    edit = next(m for m in response.json() if m["kind"] == "edit")
+    lines = edit["content"].splitlines()[1:4]
+    assert "Made it shorter" in lines[0] and "couldn't be edited" in lines[1] and "Made it shorter" in lines[2]
+    after = _assets(client, chat_id)
+    assert [a["version"] - b["version"] for a, b in zip(after, before)] == [1, 0, 1]

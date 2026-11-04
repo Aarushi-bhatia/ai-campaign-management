@@ -11,6 +11,7 @@ with an Undo note in the chat.
 
 import json
 import re
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import delete, or_, select
@@ -137,15 +138,28 @@ def _answers_to_questions(messages: list[Message]) -> set[int]:
 
 
 def undo_remembered(session: Session, note: Message) -> None:
-    """The Undo on a "Remembered" note: a new item is deleted; a rewritten one gets its old text back."""
+    """The Undo on a "Remembered" note: a new item is deleted; a rewritten one gets its old text back. Items that
+    were dropped to make room for it come back as they were (same id, so same place in memory). If memory has
+    filled up again since, MemoryFull, and nothing changes."""
     data = note.data or {}
+    if data.get("undone"):
+        return
     item = session.get(MemoryItem, data.get("item_id"))
-    if item is not None and not data.get("undone"):
-        previous = data.get("previous")
-        if previous:
-            item.text, item.kind, item.source_chat_id = previous["text"], previous["kind"], previous["source_chat_id"]
-        else:
-            session.delete(item)
+    previous, dropped = data.get("previous"), data.get("dropped", [])
+    if item is not None and previous:
+        item.text, item.kind, item.source_chat_id = previous["text"], previous["kind"], previous["source_chat_id"]
+    elif item is not None:
+        brand_id = item.brand_id
+        session.delete(item)
+        session.flush()
+        back = [d for d in dropped if session.get(MemoryItem, d["id"]) is None]
+        if back and len(core(session, brand_id)) + len(back) > CORE_LIMIT:
+            session.rollback()
+            raise MemoryFull(f"Memory has filled up again since, so the {len(back)} dropped item"
+                             f"{'s' if len(back) > 1 else ''} can't come back. Unpin or delete an item to make room.")
+        session.add_all(MemoryItem(id=d["id"], brand_id=brand_id, text=d["text"], kind=d["kind"], pinned=d["pinned"],
+                                   source_chat_id=d["source_chat_id"], created_at=datetime.fromisoformat(d["created_at"]))
+                        for d in back)
     note.data = {**data, "undone": True}
     session.commit()
 
@@ -180,7 +194,9 @@ class Memory:
         item = MemoryItem(brand_id=brand_id, text=text, kind=kind, source_chat_id=chat_id)
         self._session.add(item)
         self._session.flush()
-        item.dropped = self._keep_small(brand_id, keep=item.id)  # for the note; not stored
+        # For the note: the texts to show, and everything needed for its Undo to bring the items back.
+        item.dropped_items = self._keep_small(brand_id, keep=item.id)
+        item.dropped = [d["text"] for d in item.dropped_items]
         self._session.commit()
         return item
 
@@ -218,7 +234,9 @@ class Memory:
         return saved
 
     def record(self, chat: Chat, campaign: Campaign) -> CampaignRecord:
-        """The short history record of a finished campaign. Writing it again replaces the old one."""
+        """The short history record of a finished campaign. Writing it again (after Write again, or assets added
+        later) updates the same record, but leaves the fields the marketer corrected on the Memory page as
+        they are: their wording beats the model's."""
         plan = campaign.plan or {"summary": "", "assets": []}
         reply = self._ai.complete(
             step="Campaign record", size=ModelSize.SMALL, output_schema=RECORD_SCHEMA, chat_id=chat.id,
@@ -227,28 +245,33 @@ class Memory:
                                                                 f"Plan: {plan['summary']}")]),
         )
         raw = json.loads(reply.text)
-        self._session.execute(delete(CampaignRecord).where(CampaignRecord.campaign_id == campaign.id))
         dates = sorted({a["date"] for a in plan["assets"] if a.get("date") and a["date"] != "to be set"})
-        record = CampaignRecord(
-            brand_id=campaign.brand_id, campaign_id=campaign.id, chat_id=chat.id, name=raw["name"].strip() or chat.title,
-            goal=raw["goal"].strip(), audience=raw["audience"].strip(), angle=raw["angle"].strip(),
-            assets=[f"{a.type}: {a.title}" for a in campaign.live_assets],
-            images=sorted({a.image["path"] for a in campaign.live_assets if a.image and a.image.get("path")}),
-            dates=f"{dates[0]} to {dates[-1]}" if len(dates) > 1 else (dates[0] if dates else ""),
-        )
-        self._session.add(record)
+        record = self._session.scalars(select(CampaignRecord).where(CampaignRecord.campaign_id == campaign.id)).first()
+        if record is None:
+            record = CampaignRecord(brand_id=campaign.brand_id, campaign_id=campaign.id, chat_id=chat.id)
+            self._session.add(record)
+        written = {"name": raw["name"].strip() or chat.title, "goal": raw["goal"].strip(),
+                   "audience": raw["audience"].strip(), "angle": raw["angle"].strip()}
+        edited = set((record.extra or {}).get("edited", []))
+        for name, value in written.items():
+            if name not in edited:
+                setattr(record, name, value)
+        record.assets = [f"{a.type}: {a.title}" for a in campaign.live_assets]
+        record.images = sorted({a.image["path"] for a in campaign.live_assets if a.image and a.image.get("path")})
+        record.dates = f"{dates[0]} to {dates[-1]}" if len(dates) > 1 else (dates[0] if dates else "")
         self._session.commit()
         return record
 
-    def _keep_small(self, brand_id: int, keep: int) -> list[str]:
+    def _keep_small(self, brand_id: int, keep: int) -> list[dict[str, Any]]:
         """Drops the oldest unpinned items once core memory is over its limit, never the one just added.
-        Returns their texts, so the marketer is told."""
+        Returns them in full, so the marketer is told and an Undo can bring them back."""
         items = core(self._session, brand_id)
         extra = len(items) - CORE_LIMIT
         dropped = [i for i in items if not i.pinned and i.id != keep][:max(extra, 0)]
         for item in dropped:
             self._session.delete(item)
-        return [i.text for i in dropped]
+        return [{"id": i.id, "text": i.text, "kind": i.kind, "pinned": i.pinned, "source_chat_id": i.source_chat_id,
+                 "created_at": i.created_at.isoformat()} for i in dropped]
 
 
 def item_out(item: MemoryItem) -> dict[str, Any]:

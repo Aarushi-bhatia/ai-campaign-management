@@ -2,16 +2,20 @@
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.ai.fake import FakeTransport
 from app.ai.service import AiService
 from app.campaign import agent
+from app.campaign.models import Campaign
+from app.chat.models import Chat
 from app.campaign.writing import remembered_note
 from app.config import Settings
 from app.db import SessionLocal
 from app.brand.images.picking import AssetSpec, rank_prompt
 from app.memory.models import CampaignRecord
-from app.memory.service import HISTORY_IN_PLANNING, Memory, history, near_duplicate, recent_images, undo_remembered
+from app.memory.service import (HISTORY_IN_PLANNING, Memory, MemoryFull, history, near_duplicate, recent_images,
+                                undo_remembered)
 from tests import brand_brain
 
 BRIEF = "Launch Acme Widget to platform leads on January 26. One email, one LinkedIn post, one X post."
@@ -323,3 +327,56 @@ def test_a_campaign_record_can_be_edited(client: TestClient, brand: int):
 
 def test_adding_memory_for_a_missing_brand_is_a_404(client: TestClient):
     assert client.post("/api/brands/999/memory", json={"text": "Anything."}).status_code == 404  # was a server error
+
+
+# Group 3 of the design review: memory undo and history records keep the earlier state
+
+def test_undo_after_memory_was_full_brings_back_the_dropped_item(client: TestClient, brand: int):
+    """Undo used to remove the new item and lose the one dropped to make room for it, for good."""
+    items = _fill(client, brand, pinned=False)
+    chat_id = _planned(client)
+    note = _send(client, chat_id, "Never call it a platform.")[-1]
+    assert "was dropped" in note["content"] and note["data"]["dropped"][0]["text"] == items[0]["text"]
+
+    assert client.post(f"/api/memory/notes/{note['id']}/undo").status_code == 204
+
+    core = client.get(f"/api/brands/{brand}/memory").json()["core"]
+    assert [(i["id"], i["text"]) for i in core] == [(i["id"], i["text"]) for i in items]  # same ids, same order
+    assert core[0]["created_at"] == items[0]["created_at"]
+
+
+def test_undo_that_no_longer_fits_in_memory_changes_nothing(client: TestClient, brand: int, settings: Settings,
+                                                           fake_ai: FakeTransport):
+    items = _fill(client, brand, pinned=False)
+    with SessionLocal() as session:
+        new = Memory(session, AiService(session, fake_ai, settings)).add(brand, "Keep emails under 150 words.",
+                                                                         "preference", None)
+        note = remembered_note(new)
+        # as if two items had made room for it: bringing both back would go over the limit
+        note.data = {**note.data, "dropped": [*note.data["dropped"], {**note.data["dropped"][0], "id": 99999}]}
+        with pytest.raises(MemoryFull):
+            undo_remembered(session, note)
+
+    core = client.get(f"/api/brands/{brand}/memory").json()["core"]
+    assert "Keep emails under 150 words." in [i["text"] for i in core] and len(core) == 50
+    assert items[0]["id"] not in [i["id"] for i in core]
+
+
+def test_writing_a_campaign_record_again_keeps_the_marketers_corrections(client: TestClient, brand: int,
+                                                                        fake_ai: FakeTransport, settings: Settings):
+    """The record used to be deleted and written from scratch, after Write again or added assets, losing the
+    goal the marketer had corrected on the Memory page."""
+    chat_id = _planned(client)
+    client.post(f"/api/chats/{chat_id}/approve")
+    record = client.get(f"/api/brands/{brand}/memory").json()["history"][0]
+    client.put(f"/api/campaign-records/{record['id']}", json={"goal": "Book 40 demos"})
+
+    with SessionLocal() as session:
+        chat = session.get_one(Chat, chat_id)
+        campaign = session.scalars(select(Campaign).where(Campaign.chat_id == chat_id)).one()
+        Memory(session, AiService(session, fake_ai, settings)).record(chat, campaign)
+
+    again = client.get(f"/api/brands/{brand}/memory").json()["history"]
+    assert len(again) == 1 and again[0]["id"] == record["id"]  # updated in place
+    assert again[0]["goal"] == "Book 40 demos"
+    assert (again[0]["name"], again[0]["assets"]) == (record["name"], record["assets"])  # the rest is written again

@@ -122,7 +122,9 @@ export function ChatPanel({ chatId, brandId, onChatCreated, onViewPrompt }: Prop
           )}
           {answeringHere && <Working />}
           {writingNow && <p className="text-sm text-stone-400">Writing… each asset is checked and fixed before it shows as done.</p>}
-          {(sendError || answerError) && <p className="text-sm text-red-600">{(sendError ?? answerError)!.message}</p>}
+          {(sendError || answerError || undoMemory.error) && (
+            <p className="text-sm text-red-600">{(sendError ?? answerError ?? undoMemory.error)!.message}</p>
+          )}
           <div ref={bottomRef} />
         </div>
       </div>

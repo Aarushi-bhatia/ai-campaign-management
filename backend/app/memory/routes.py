@@ -89,12 +89,15 @@ def undo_remembered_note(message_id: int, session: SessionDep):
     note = session.get(Message, message_id)
     if note is None or note.kind != "memory":
         raise HTTPException(404, "No such memory note.")
-    undo_remembered(session, note)
+    try:
+        undo_remembered(session, note)
+    except MemoryFull as full:
+        raise HTTPException(409, str(full))
 
 
 @router.delete("/memory/{item_id}", status_code=204)
 def delete_memory(item_id: int, session: SessionDep):
-    """Also the Undo on a "Remembered" note: the note is marked as undone."""
+    """Deletes an item from the Memory page. Its "Remembered" notes in the chat are marked as undone."""
     item = _item(session, item_id)
     notes = select(Message).where(Message.kind == "memory", Message.data["item_id"].as_integer() == item_id)
     for note in session.scalars(notes):
@@ -105,13 +108,17 @@ def delete_memory(item_id: int, session: SessionDep):
 
 @router.put("/campaign-records/{record_id}")
 def change_record(record_id: int, body: RecordChange, session: SessionDep):
-    """Corrects what the planner reads about a past campaign. Blank fields are left as they are."""
+    """Corrects what the planner reads about a past campaign. Blank fields are left as they are. The fields
+    corrected here are noted, so writing the record again later keeps them."""
     record = session.get(CampaignRecord, record_id)
     if record is None:
         raise HTTPException(404, "No such campaign record.")
+    edited = set((record.extra or {}).get("edited", []))
     for name, value in body.model_dump(exclude_none=True).items():
         if value.strip():
             setattr(record, name, value.strip())
+            edited.add(name)
+    record.extra = {**(record.extra or {}), "edited": sorted(edited)}
     session.commit()
     return _record_out(record)
 

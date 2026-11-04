@@ -8,7 +8,7 @@ from sqlalchemy import exists, func, inspect, select, update
 from sqlalchemy.orm import Session
 
 from app.ai.models import AiCall
-from app.ai.service import AiService
+from app.ai.service import AiCallFailed, AiService
 from app.brand.models import Brand, Entity
 from app.brand.service import BadCorrection, save_correction
 from app.campaign import editing, stages, writer
@@ -391,6 +391,13 @@ class CampaignService:
             part = f" ({field_name})" if field_name else ""
             try:
                 draft = work.edit(asset, route.instruction, field_name)
+            except AiCallFailed as failure:
+                # The other assets' edits still stand (each saved as it finished), so the reply lists them all.
+                cost = self._cost([failure.call_id])
+                total += cost
+                lines.append(f"{writer.TYPE_LABELS[asset.type]} “{asset.title}”{part}: couldn't be edited ({failure}), "
+                             f"so it is as it was. Ask again to retry it ({_usd(cost)}).")
+                continue
             except AssetChanged:
                 lines.append(f"{writer.TYPE_LABELS[asset.type]} “{asset.title}”{part}: it changed while I was editing it, "
                              "so I left your newer version as it is. Ask again to apply this change to it.")
@@ -404,6 +411,8 @@ class CampaignService:
             cost = self._cost(draft.call_ids)
             total += cost
             warn = f"; {len(draft.warnings)} warning{'s' if len(draft.warnings) > 1 else ''}" if draft.warnings else ""
+            if any(w["check"] == "not checked" for w in draft.warnings):
+                warn = "; its checks couldn't run, so press Check again on it"
             if not draft.saved:
                 lines.append(f"{writer.TYPE_LABELS[asset.type]} “{asset.title}”{part}: not changed, so no new version"
                              f"{f'. {draft.changed}' if draft.changed else ''} ({_usd(cost)})")

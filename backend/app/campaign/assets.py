@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.models import AiCall
-from app.ai.service import AiService
+from app.ai.service import AiCallFailed, AiService
 from app.brand import writing_rules
 from app.brand.evidence import Document, normalize, sentences
 from app.brand.images import library
@@ -114,8 +114,7 @@ class AssetWork:
             log.exception("Checking asset %s failed", asset.id)
             self.session.rollback()
             asset.state, asset.error, asset.fixed = "done", None, []
-            asset.warnings = [{"check": "not checked", "quote": "",
-                               "problem": f"The checks couldn't run ({error}). Press Check again."}]
+            asset.warnings = [not_checked(error)]
             self._version(asset).warnings = asset.warnings
             self.session.commit()
             return (f"{writer.TYPE_LABELS[asset.type]} “{asset.title}” written, but its checks couldn't run: {error}. "
@@ -166,6 +165,9 @@ class AssetWork:
                                "so these results weren't kept. Press Check again on the latest version.")
         draft = Draft(asset.content or {}, call_ids, warnings=[p.to_dict() for p in problems])
         self._set_checks(asset, draft)
+        # The version keeps them too, so going back to it later (undo, restore) shows what this check found,
+        # not the list from before it.
+        self._version(asset).warnings = draft.warnings
         self.session.commit()
         return draft
 
@@ -193,8 +195,15 @@ class AssetWork:
         if new == old:
             # Nothing changed: no new version, and no checks to pay for.
             return Draft(old, [reply.call_id], warnings=asset.warnings, changed=raw["changed"].strip(), saved=False)
-        problems, call_ids = self._all_checks(asset, new, facts)
-        draft = Draft(new, [reply.call_id, *call_ids], warnings=[p.to_dict() for p in problems], changed=raw["changed"].strip())
+        try:
+            problems, call_ids = self._all_checks(asset, new, facts)
+            warnings = [p.to_dict() for p in problems]
+        except Exception as error:
+            # As when writing: the paid-for edit is kept, marked as not checked, so Check again can finish the job.
+            log.exception("Checking the edit of asset %s failed", asset.id)
+            call_ids = [error.call_id] if isinstance(error, AiCallFailed) else []
+            warnings = [not_checked(error)]
+        draft = Draft(new, [reply.call_id, *call_ids], warnings=warnings, changed=raw["changed"].strip())
         self._save(asset, "chat edit", draft, note=draft.changed, expected=base)
         return draft
 
@@ -427,6 +436,10 @@ class AssetWork:
         self.campaign.hand_fixes = counts
         self.session.commit()
         return offer
+
+
+def not_checked(error: Exception) -> dict[str, str]:
+    return {"check": "not checked", "quote": "", "problem": f"The checks couldn't run ({error}). Press Check again."}
 
 
 def _bare(words: str) -> str:

@@ -9,8 +9,8 @@ from sqlalchemy import select
 
 from app.ai.fake import FakeTransport
 from app.ai.service import AiService
-from app.brand.models import Brand, BrandFile
-from app.brand.settle import usable_facts
+from app.brand.models import Brand, BrandDecision, BrandFile, Conflict, Fact
+from app.brand.settle import settle, usable_facts
 from app.campaign.agent import CampaignAgent
 from app.campaign.brand_tools import BrandTools
 from app.db import SessionLocal
@@ -297,3 +297,95 @@ def test_a_conflict_with_no_side_left_no_longer_applies(client: TestClient):
     certifications = _conflict(brand, "certifications")
     assert (certifications["rule"], certifications["winner"]) == ("not_counting", None)
     assert "none of these facts count" in certifications["reason"]  # shown as no longer applying, not as needing a pick
+
+
+# Group 4 of the design review: a conflict choice is found by the conflict, not only its documents
+
+def _second_point(brand_id: int) -> int:
+    """A second conflict on the certifications conflict's subject, between the same two documents, on another
+    point (whether the product is in beta)."""
+    with SessionLocal() as session:
+        first = session.scalars(select(Conflict).where(Conflict.brand_id == brand_id, Conflict.topic == "certifications")).one()
+        files = {f.path: f.id for f in session.scalars(select(BrandFile).where(BrandFile.brand_id == brand_id))}
+        facts = [Fact(brand_id=brand_id, file_id=files[path], subject="Acme", subject_key=first.subject_key,
+                      attribute="release status", value=value, kind="fact", scope="", evidence=value)
+                 for path, value in (("legal/certifications.md", "beta"), ("internal/sales-notes.md", "generally available"))]
+        session.add_all(facts)
+        session.flush()
+        second = Conflict(brand_id=brand_id, subject_key=first.subject_key, group_hash="", point="They disagree on status.",
+                          topic="release status", fact_ids=[f.id for f in facts], owner_file_ids=[], rule="needs_human",
+                          reason="", sides=[{"position": f.value, "fact_ids": [f.id]} for f in facts])
+        session.add(second)
+        session.commit()
+        settle(session, brand_id)
+        return second.id
+
+
+def _choose(client: TestClient, brand_id: int, conflict: dict, path: str) -> dict:
+    return client.post(f"/api/brands/{brand_id}/corrections",
+                       json={"kind": "conflict_winner", "target": conflict["target"], "value": path}).json()
+
+
+def test_a_winner_chosen_for_one_point_leaves_the_other_points_alone(client: TestClient):
+    """The choice was named by subject and documents only, so it applied to every conflict between them (#1)."""
+    brand_id = _upload(client)
+    _second_point(brand_id)
+    before = _conflict(_brand(client, brand_id), "release status")
+
+    brand = _choose(client, brand_id, _conflict(_brand(client, brand_id), "certifications"), "internal/sales-notes.md")
+
+    assert (_conflict(brand, "certifications")["rule"], _conflict(brand, "certifications")["winner"]) == (
+        "you", "internal/sales-notes.md")
+    assert _conflict(brand, "release status")["rule"] == before["rule"] != "you"  # was flipped to the same choice
+    brand = _choose(client, brand_id, _conflict(brand, "release status"), "legal/certifications.md")
+    assert _conflict(brand, "certifications")["winner"] == "internal/sales-notes.md"  # the second didn't replace it
+
+
+def test_a_choice_stays_when_another_document_joins_and_says_so(client: TestClient):
+    """The name listed every document, so a document joining made the choice silently stop applying (#21)."""
+    brand_id = _upload(client)
+    chosen = _conflict(_choose(client, brand_id, _conflict(_brand(client, brand_id), "certifications"),
+                               "internal/sales-notes.md"), "certifications")
+    with SessionLocal() as session:  # the guide now says something about certification too
+        conflict = session.get_one(Conflict, chosen["id"])
+        guide = session.scalars(select(BrandFile).where(BrandFile.brand_id == brand_id, BrandFile.path == "guide.md")).one()
+        fact = Fact(brand_id=brand_id, file_id=guide.id, subject="Acme", subject_key=conflict.subject_key,
+                    attribute="certification", value="certification pending", kind="fact", scope="", evidence="pending")
+        session.add(fact)
+        session.flush()
+        conflict.fact_ids = [*conflict.fact_ids, fact.id]
+        conflict.sides = [*conflict.sides, {"position": "pending", "fact_ids": [fact.id]}]
+        session.commit()
+        settle(session, brand_id)
+
+    after = _conflict(_brand(client, brand_id), "certifications")
+    assert (after["rule"], after["winner"]) == ("you", "internal/sales-notes.md")
+    assert "Since then, guide.md joined this disagreement" in after["reason"]
+    assert after["decided_target"] == chosen["target"] != after["target"]  # so the Brand page can show and undo it
+
+
+def test_a_choice_saved_in_the_old_naming_still_applies(client: TestClient):
+    brand_id = _upload(client)
+    conflict = _conflict(_brand(client, brand_id), "certifications")
+    paths = " + ".join(sorted({f["path"] for f in conflict["facts"]}))
+    with SessionLocal() as session:
+        subject_key = session.get_one(Conflict, conflict["id"]).subject_key
+        session.add(BrandDecision(brand_id=brand_id, kind="conflict_winner", target=f"{subject_key} | {paths}",
+                                  value="internal/sales-notes.md"))
+        session.commit()
+        settle(session, brand_id)
+
+    assert _conflict(_brand(client, brand_id), "certifications")["winner"] == "internal/sales-notes.md"
+
+
+# The folders left out of an upload are remembered (#23)
+
+def test_the_folders_left_out_are_remembered_for_the_next_update(client: TestClient):
+    brand_id = _upload(client)  # leaves out briefs/
+
+    brand = _brand(client, brand_id)
+    assert brand["excluded"] == ["briefs"]
+    assert all(d["kind"] != "excluded" for d in brand["decisions"])  # not shown as a correction
+    client.post(f"/api/brands/{brand_id}/files", data={"exclude": ["briefs", "drafts"]},
+                files=[("files", ("acme/guide.md", BRAND["acme/guide.md"].encode()))])
+    assert _brand(client, brand_id)["excluded"] == ["briefs", "drafts"]

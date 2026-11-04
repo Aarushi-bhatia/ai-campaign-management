@@ -13,9 +13,41 @@ from app.brand.models import Brand, BrandDecision, BrandFile, Conflict, DocLink,
 from app.brand.status import DocView, LinkView, decide_statuses
 
 
-def conflict_target(subject_key: str, paths: list[str]) -> str:
-    """How a conflict is named in a correction, so the correction still finds it after a re-read."""
-    return f"{subject_key} | {' + '.join(sorted(paths))}"
+def conflict_target(conflict: Conflict, facts: dict[int, Fact], paths: list[str]) -> str:
+    """How a conflict is named in a correction, so the correction still finds it after a re-read (which makes
+    new conflict rows): its subject, the points its facts disagree on, and the documents taking part, as
+    "subject | points | documents". The points keep two conflicts on one subject apart (price and status
+    between the same two documents); the documents only say which ones the choice was made between."""
+    return f"{_point_of(conflict, facts)} | {' + '.join(sorted(paths))}"
+
+
+def chosen_winner(conflict: Conflict, facts: dict[int, Fact], paths: list[str],
+                  decisions: dict[tuple[str, str], str]) -> tuple[str | None, list[str], str | None]:
+    """The document the marketer chose to win this conflict, if any, the documents that joined it since the
+    choice, and the choice's name (for showing and undoing it). A choice is found by subject and points, so a document joining doesn't lose it. A choice saved
+    before points were part of the name ("subject | documents") still applies, as it did, to the same
+    documents."""
+    point = f"{_point_of(conflict, facts)} | "
+    for (kind, target), value in reversed(decisions.items()):  # the newest choice first
+        if kind == "conflict_winner" and target.startswith(point):
+            then = set(target[len(point):].split(" + "))
+            return value, sorted(set(paths) - then), target
+    legacy = f"{conflict.subject_key} | {' + '.join(sorted(paths))}"
+    if ("conflict_winner", legacy) in decisions:
+        return decisions[("conflict_winner", legacy)], [], legacy
+    return None, [], None
+
+
+def same_conflict(target: str) -> str | None:
+    """For a saved choice in the current naming, the part that names the conflict itself ("subject | points | "),
+    so a newer choice for it replaces the older one, whatever documents each was made between."""
+    parts = target.split(" | ")
+    return f"{parts[0]} | {parts[1]} | " if len(parts) == 3 else None
+
+
+def _point_of(conflict: Conflict, facts: dict[int, Fact]) -> str:
+    points = sorted({" ".join(facts[i].attribute.lower().replace("|", " ").split()) for i in conflict.fact_ids if i in facts})
+    return f"{conflict.subject_key} | {' + '.join(points)}"
 
 
 def settle(session: Session, brand_id: int) -> None:
@@ -132,10 +164,12 @@ def _judge(
     if len({sides[c.file_id] for c in candidates if c.file_id in sides}) < 2:
         _no_dispute_left(conflict, candidates, [c for c in everyone if c not in candidates], by_id)
         return
-    chosen_path = decisions.get(("conflict_winner", conflict_target(conflict.subject_key, [c.path for c in everyone])))
+    chosen_path, joined, _ = chosen_winner(conflict, facts, [c.path for c in everyone], decisions)
     chosen = next((c for c in candidates if c.path == chosen_path), None)
     if chosen:
-        conflict.winner_file_id, conflict.rule, conflict.reason = chosen.file_id, "you", "You chose this on the Brand page."
+        since = f" Since then, {', '.join(joined)} joined this disagreement; choose again if that changes things." \
+            if joined else ""
+        conflict.winner_file_id, conflict.rule, conflict.reason = chosen.file_id, "you", f"You chose this on the Brand page.{since}"
         return
     verdict = conflict_rules.pick_winner(
         candidates, conflict.owner_file_ids, conflict.topic, replaces, outranked, outranking, sides,
@@ -178,6 +212,10 @@ def _documents(session: Session, brand_id: int) -> list[BrandFile]:
             select(BrandFile).where(BrandFile.brand_id == brand_id, BrandFile.kind == "document").order_by(BrandFile.id)
         )
     )
+
+
+def decisions_of(session: Session, brand_id: int) -> dict[tuple[str, str], str]:
+    return _decisions(session, brand_id)
 
 
 def _decisions(session: Session, brand_id: int) -> dict[tuple[str, str], str]:

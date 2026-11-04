@@ -29,7 +29,9 @@ from app.memory.models import CampaignRecord, MemoryItem
 CORE_LIMIT = 50
 _WORD = re.compile(r"[a-z0-9]+")
 _FILLER = {"a", "an", "the", "it", "its", "to", "of", "for", "in", "on", "and", "or", "be", "is", "are", "should",
-           "always", "all", "every", "our", "we", "you", "your", "with"}
+           "always", "all", "every", "our", "we", "you", "your", "with", "keep", "make", "please", "must", "do"}
+_NEGATIONS = {"no", "not", "never", "don", "dont", "avoid", "without", "nor", "stop"}
+_CHANNELS = {"email", "newsletter", "linkedin", "x", "twitter", "tweet", "blog", "landing", "website", "social"}
 
 
 class MemoryChanged(Exception):
@@ -51,8 +53,12 @@ worth remembering for future campaigns:
 Don't keep: details of this campaign only (its dates, audience, offer, launch, images, approvals or \
 asset mix), one-off edits to one asset, choices the marketer made for this campaign's brief, anything the \
 brand summary below already says, or anything already in memory. Only keep what the marketer says would \
-hold for every future campaign. When in doubt, keep nothing. When a new item \
-says the same as an item in memory, or updates it, give that item's id in replaces; otherwise 0.
+hold for every future campaign. When in doubt, keep nothing. Compare each new \
+item with memory. When it says exactly what an item in memory says, only worded differently and with the \
+same scope, give that item's id in same_as. When it changes an item in memory (contradicts it, updates a \
+number, narrows or widens it to other channels or cases), give that item's id in changes. A rule for one \
+channel, campaign or case is never the same as a broader one. Otherwise, or when unsure, give 0 for both: \
+keeping two items is safer than losing one.
 
 Each item is one short sentence, written as an instruction to the agent. Most messages hold nothing \
 worth keeping; then return no items.
@@ -63,7 +69,7 @@ worth keeping; then return no items.
 SUGGEST_SCHEMA = OutputSchema(
     name="memory_items",
     schema=strict_object({"items": array_of(strict_object({
-        "text": TEXT, "kind": enum(*KINDS), "replaces": {"type": "integer"},
+        "text": TEXT, "kind": enum(*KINDS), "same_as": {"type": "integer"}, "changes": {"type": "integer"},
     }))}),
 )
 
@@ -102,20 +108,29 @@ def recent_images(session: Session, brand_id: int, skip_campaign: int | None = N
 
 
 def near_duplicate(a: str, b: str) -> bool:
-    """True for two wordings of one instruction ("Keep emails short", "Emails should be short"), false for
-    different ones ("Never call it a platform", "Never call it a toolkit"): two thirds of the words match,
-    leaving out filler and plural endings, and one wording only adds words to the other. A swapped word is
-    left apart, since it is usually what makes the rule ("LinkedIn posts" and "X posts" under 150 words);
-    real rewordings with swapped words ("brief" for "short") are left to the model's replaces."""
+    """True only for the same instruction in other words: the same words in any order, leaving out filler and
+    trivial wording ("Keep emails short", "Emails should be short"). Any added, dropped or swapped word keeps
+    them apart ("Use British spelling" and "... in emails"; "LinkedIn" and "X"), and so does a negation in a
+    different place ("use A, not B" and "use B, not A"). Everything else is the model's call."""
     words_a, words_b = _words(a), _words(b)
-    shared = words_a & words_b
-    only_adds = shared in (words_a, words_b)
-    return bool(words_a and words_b) and only_adds and 3 * len(shared) >= 2 * len(words_a | words_b)
+    if not words_a or sorted(words_a) != sorted(words_b):
+        return False
+    return words_a == words_b or not set(words_a) & _NEGATIONS
 
 
-def _words(text: str) -> set[str]:
-    words = set(_WORD.findall(text.lower())) - _FILLER  # before trimming plurals, or "always" stays as "alway"
-    return {w[:-1] if len(w) > 3 and w.endswith("s") else w for w in words}
+def changes_meaning(a: str, b: str) -> bool:
+    """A check on the model's "same": two items that differ in a negation, a number or a channel never say
+    the same thing, whatever their wording."""
+    words_a, words_b = set(_words(a)), set(_words(b))
+    return any(words_a & kind != words_b & kind for kind in (_NEGATIONS, _CHANNELS)) or \
+        {w for w in words_a if w.isdigit()} != {w for w in words_b if w.isdigit()}
+
+
+def _words(text: str) -> list[str]:
+    """The words that carry the instruction, in order. Plural endings are trimmed after the filler is left out,
+    or "always" would stay as "alway"."""
+    words = [w for w in _WORD.findall(text.lower()) if w not in _FILLER]
+    return [w[:-1] if len(w) > 3 and w.endswith("s") else w for w in words]
 
 
 def history_text(session: Session, brand_id: int, skip_campaign: int | None = None) -> str:
@@ -181,6 +196,23 @@ def undo_remembered(session: Session, note: Message) -> None:
     session.commit()
 
 
+def replace_changed(session: Session, note: Message) -> None:
+    """The "Replace it" on a "Remembered" note whose item changes an older one: the older one goes, kept whole in
+    the note, so the note's Undo brings it back along with removing the new one."""
+    data = note.data or {}
+    changes = data.get("changes")
+    if not changes or data.get("undone") or data.get("replaced"):
+        raise MemoryChanged("There is nothing to replace on this note any more.")
+    old = session.get(MemoryItem, changes["id"])
+    if old is None:
+        raise MemoryChanged("That older item is no longer in memory.")
+    kept = {"id": old.id, "text": old.text, "kind": old.kind, "pinned": old.pinned, "source_chat_id": old.source_chat_id,
+            "created_at": old.created_at.isoformat()}
+    session.delete(old)
+    note.data = {**data, "replaced": True, "dropped": [*data.get("dropped", []), kept]}
+    session.commit()
+
+
 class Memory:
     def __init__(self, session: Session, ai: AiService) -> None:
         self._session = session
@@ -188,24 +220,24 @@ class Memory:
         self.refused: list[str] = []
         """Items `suggest` couldn't save because memory is full of pinned items."""
 
-    def add(self, brand_id: int, text: str, kind: str, chat_id: int | None, replaces: int = 0) -> MemoryItem | None:
-        """Saves an item, merging it into the one it replaces, an identical one or a near-identical one. None
-        when nothing new. When memory is full, the oldest unpinned item makes room, and the saved item's
-        `dropped` says which; when every item is pinned, MemoryFull, and nothing changes."""
+    def add(self, brand_id: int, text: str, kind: str, chat_id: int | None, same_as: int = 0,
+            changes: int = 0) -> MemoryItem | None:
+        """Saves an item. None when memory already holds it: the same words (`near_duplicate`), or the item the
+        model gave as `same_as`, unless the two differ in meaning after all. That item stays as it was, with its
+        own wording and source. An item that changes one in memory never overwrites it: both are kept, and the
+        saved item's `changes` names the old one, so the note can offer to replace it. When memory is full, the
+        oldest unpinned item makes room, and `dropped` says which; when every item is pinned, MemoryFull, and
+        nothing changes."""
         text = text.strip()
         if not text:
             return None
         items = core(self._session, brand_id)
-        same = next((i for i in items if i.id == replaces or normalize(i.text) == normalize(text)), None)
-        same = same or next((i for i in items if near_duplicate(i.text, text)), None)
-        if same is not None:
-            if normalize(same.text) == normalize(text):
-                return None
-            # Kept on the item for this request, so the "Remembered" note can show it and its Undo bring it back.
-            same.previous = {"text": same.text, "kind": same.kind, "source_chat_id": same.source_chat_id}
-            same.text, same.kind, same.source_chat_id = text, kind, chat_id or same.source_chat_id
-            self._session.commit()
-            return same
+        if any(normalize(i.text) == normalize(text) or near_duplicate(i.text, text) for i in items):
+            return None
+        same = next((i for i in items if i.id == same_as), None)
+        if same is not None and not changes_meaning(same.text, text):
+            return None
+        changed = next((i for i in items if i.id == changes), None) or same
         if len(items) >= CORE_LIMIT and all(i.pinned for i in items):
             raise MemoryFull(f"Memory is full: all {len(items)} items are pinned. Unpin or delete one to make room.")
         item = MemoryItem(brand_id=brand_id, text=text, kind=kind, source_chat_id=chat_id)
@@ -214,6 +246,9 @@ class Memory:
         # For the note: the texts to show, and everything needed for its Undo to bring the items back.
         item.dropped_items = self._keep_small(brand_id, keep=item.id)
         item.dropped = [d["text"] for d in item.dropped_items]
+        gone = {d["id"] for d in item.dropped_items}
+        # The item it changes, for the note's "Replace it"; none when that one was just dropped to make room.
+        item.changes = {"id": changed.id, "text": changed.text} if changed is not None and changed.id not in gone else None
         self._session.commit()
         return item
 
@@ -241,7 +276,7 @@ class Memory:
         saved = []
         for raw in json.loads(reply.text)["items"]:
             try:
-                item = self.add(brand.id, raw["text"], raw["kind"], chat.id, raw["replaces"])
+                item = self.add(brand.id, raw["text"], raw["kind"], chat.id, raw["same_as"], raw["changes"])
             except MemoryFull:
                 self.refused.append(raw["text"].strip())
                 continue

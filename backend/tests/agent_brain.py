@@ -226,7 +226,7 @@ def route(request: AiRequest) -> dict:
 def memory(request: AiRequest) -> dict:
     said = request.prompt.task[-1].content.split("=== NEW MESSAGES ===", 1)[1].lower()
     if "never call it a platform" in said:
-        return {"items": [{"text": "Never call Acme a platform.", "kind": "correction", "replaces": 0}]}
+        return {"items": [{"text": "Never call Acme a platform.", "kind": "correction", "same_as": 0, "changes": 0}]}
     return {"items": []}
 
 

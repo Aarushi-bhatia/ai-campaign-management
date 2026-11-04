@@ -118,15 +118,14 @@ def _finish(runtime: Runtime, session, campaign_id: int) -> None:
 
 
 def remembered_note(item) -> Message:
-    """When the item rewrote an older one, the note says what it replaced, and its Undo puts that back. When
-    memory was full, it says which old item was dropped to make room, and keeps it whole for the Undo."""
-    previous = getattr(item, "previous", None)
-    if previous:
-        return Message(role="assistant", kind="memory", data={"item_id": item.id, "previous": previous},
-                       content=f"Remembered: {item.text} (this replaces “{previous['text']}”)")
+    """When memory was full, the note says which old item was dropped to make room, and keeps it whole for the
+    Undo. When the item changes one already in memory, both are kept, and the note offers to replace the old one."""
     dropped = getattr(item, "dropped_items", None) or []
+    changes = getattr(item, "changes", None)
     note = "".join(f" Memory was full, so the oldest unpinned item was dropped: “{d['text']}”." for d in dropped)
-    data = {"item_id": item.id, "dropped": dropped} if dropped else {"item_id": item.id}
+    if changes:
+        note += f" This changes “{changes['text']}”, which is still in memory: replace it, or keep both."
+    data = {"item_id": item.id, **({"dropped": dropped} if dropped else {}), **({"changes": changes} if changes else {})}
     return Message(role="assistant", kind="memory", content=f"Remembered: {item.text}{note}", data=data)
 
 

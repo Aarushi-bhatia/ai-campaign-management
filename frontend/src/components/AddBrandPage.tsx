@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, type PickedFile } from "../api/client";
 
@@ -14,6 +14,12 @@ export function AddBrandPage({ updating, onAdded }: Props) {
   const [picked, setPicked] = useState<PickedFile[]>([]);
   const [name, setName] = useState("");
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  // Updating starts from the folders left out last time (such as briefs), so they aren't read by accident.
+  const current = useQuery({
+    queryKey: ["brand", updating?.id],
+    queryFn: () => api.getBrand(updating!.id),
+    enabled: updating !== undefined,
+  });
 
   const upload = useMutation({
     mutationFn: () =>
@@ -31,7 +37,7 @@ export function AddBrandPage({ updating, onAdded }: Props) {
       .filter(({ path }) => !path.split("/").some((part) => part.startsWith(".")));
     setPicked(files);
     setName(files[0]?.path.split("/")[0] ?? "");
-    setExcluded(new Set());
+    setExcluded(new Set(current.data?.excluded ?? []));
   }
 
   const folders = topFolders(picked);

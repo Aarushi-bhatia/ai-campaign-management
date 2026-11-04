@@ -39,7 +39,8 @@ export function ConflictsTab({ brand, corrections, onViewPrompt }: Props) {
 }
 
 function ConflictCard({ conflict, corrections, onViewPrompt }: { conflict: Conflict } & Omit<Props, "brand">) {
-  const decision = corrections.decisionFor("conflict_winner", conflict.target);
+  // The choice that applies can be named after the documents it was made between, before another one joined.
+  const decision = corrections.decisionFor("conflict_winner", conflict.decided_target ?? conflict.target);
   const undecided = conflict.rule === "needs_human";
 
   return (

@@ -252,6 +252,7 @@ export type Conflict = {
   winning_side: number | null;
   facts: { id: number; side: number; path: string; attribute: string; value: string; kind: string; evidence: string }[];
   target: string;
+  decided_target: string | null;
   call_id: number | null;
 };
 
@@ -274,6 +275,8 @@ export type Brand = BrandSummary & {
   entities: Entity[];
   links: { source: string; target: string; effect: string; claim: string; evidence: string }[];
   decisions: Decision[];
+  /** Folders and files left out of the last upload. */
+  excluded: string[];
   summary: string | null;
   summary_edited: boolean;
   summary_stale: boolean;

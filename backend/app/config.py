@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     brand_dir: Path | None = None
     brand_name: str = ""
     """Name for the preloaded brand. Defaults to the folder's name."""
+    brand_source: str = ""
+    """The preload folder as given on this machine (BRAND_DIR before Docker mounts it, which always mounts it at
+    the same place). It tells one preloaded brand folder from another."""
     brand_exclude: str = ""
     """Comma-separated folder or file patterns in the preload folder that are not brand material, such as briefs."""
 

@@ -370,14 +370,14 @@ class CampaignService:
         return new + [self._post(chat, "assistant", "text", edit.reply, call_id=agent.last_call_id)]
 
     def _settle_conflict(self, chat: Chat, campaign: Campaign, target: str, path: str) -> list[Message]:
-        """An answer to a conflict question becomes a brand decision, so it isn't asked again, and a memory."""
+        """An answer to a conflict question becomes a brand decision, so it isn't asked again. It is not also kept
+        as a memory item: the decision is the one place it lives (shown and undone on the Brand page, applied by
+        the conflict rules), and a copy in memory would go stale when the conflict is decided again."""
         try:
             save_correction(self._session, campaign.brand_id, "conflict_winner", target, path)
         except BadCorrection:
             return []
-        new = [self._post(chat, "assistant", "note", f"Saved for the brand: {path} wins this conflict from now on.")]
-        topic = target.split("|", 1)[0].replace("_", " ")
-        return new + self._add_memory(chat, campaign, f"On {topic}, {path} is the one to follow.", "decision")
+        return [self._post(chat, "assistant", "note", f"Saved for the brand: {path} wins this conflict from now on.")]
 
     def _add_memory(self, chat: Chat, campaign: Campaign, text: str, kind: str) -> list[Message]:
         """Saves one item and posts its note: what was saved, what made room, or that memory is full."""

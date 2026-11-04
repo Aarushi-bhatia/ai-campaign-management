@@ -17,7 +17,8 @@ export function MemoryPage({ brandId, onOpenChat }: Props) {
     mutationFn: (text: string) => api.addMemory(brandId, text, "preference"),
     onSuccess: (item) => {
       setAdding("");
-      setNotice(item.replaced ? `That updated “${item.replaced}”.`
+      setNotice(item.changes ? `This changes “${item.changes}”, which is still in memory: delete one if only one should apply.`
+        : item.replaced ? `That updated “${item.replaced}”.`
         : item.dropped.length ? `Memory was full, so the oldest unpinned item was dropped: ${item.dropped.map((t) => `“${t}”`).join(", ")}.`
         : null);
       refresh();

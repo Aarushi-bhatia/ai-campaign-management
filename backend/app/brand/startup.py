@@ -1,6 +1,7 @@
 """Brand work done when the app starts: preload the settings folder, and finish interrupted reads."""
 
 import logging
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -28,12 +29,15 @@ def _preload(brands: BrandService, settings: Settings) -> None:
     folder = settings.brand_dir
     if folder is None or not folder.is_dir() or not any(folder.iterdir()):
         return
-    source = str(folder.resolve())
-    if brands.find_by_source(source):
+    # Inside Docker the folder is always mounted at the same place, so the folder as named on the machine tells
+    # brands apart. A brand preloaded before that was known (its source is the mount) counts as loaded: reading
+    # it again unasked would cost a full brand read.
+    source = f"folder:{settings.brand_source.strip()}" if settings.brand_source.strip() else str(folder.resolve())
+    if brands.find_by_source(source) or (source != str(folder.resolve()) and brands.find_by_source(str(folder.resolve()))):
         return
     log.info("Preloading the brand folder %s", source)
     try:
-        name = settings.brand_name or folder.name
+        name = settings.brand_name or (Path(settings.brand_source.strip()).name if settings.brand_source.strip() else folder.name)
         brands.create(name, read_folder(folder), settings.brand_exclude_patterns, source=source)
     except NothingToRead as error:
         log.warning("Not preloading %s: %s", source, error)

@@ -170,7 +170,7 @@ class CampaignAgent:
             if files:
                 options.append({"label": side["position"], "value": paths[files[0]]})
         doc_paths = sorted({paths[f.file_id] for f in facts.values() if f.file_id in paths})
-        return {"options": options[:MAX_OPTIONS], "conflict_target": conflict_target(conflict.subject_key, doc_paths)}
+        return {"options": options[:MAX_OPTIONS], "conflict_target": conflict_target(conflict, facts, doc_paths)}
 
     def _checked_plan(self, summary: str, assets: list[dict[str, Any]], keep: set[str] | None = None) -> dict[str, Any]:
         """Allowed asset types and channels only, each with a unique id.

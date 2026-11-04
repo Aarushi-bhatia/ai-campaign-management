@@ -171,6 +171,10 @@ def test_answering_a_conflict_question_settles_it_for_the_brand(client: TestClie
     assert any("Saved for the brand" in m["content"] for m in messages)
     settled = next(c for c in client.get(f"/api/brands/{brand_id}").json()["conflicts"] if c["subject"] == "brand color")
     assert (settled["winner"], settled["rule"]) == ("colors/b.md", "you")
+    # The decision lives on the Brand page only: a copy in memory went stale when the conflict was decided again,
+    # leaving "a wins" and "b wins" side by side.
+    assert not any(m["kind"] == "memory" for m in messages)
+    assert client.get(f"/api/brands/{brand_id}/memory").json()["core"] == []
 
 
 def test_the_plan_changes_by_chat_and_untouched_assets_stay(client: TestClient):

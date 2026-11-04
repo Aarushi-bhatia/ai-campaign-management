@@ -79,6 +79,8 @@ class ConflictOut(BaseModel):
     facts: list[ConflictFactOut]
     target: str
     """Name to use when correcting this conflict's winner."""
+    decided_target: str | None = None
+    """The name of the saved choice that applies, which can be older than `target` (a document joined since)."""
     call_id: int | None
 
 
@@ -140,6 +142,8 @@ class BrandOut(BrandSummary):
     entities: list[EntityOut]
     links: list[LinkOut]
     decisions: list[DecisionOut]
+    excluded: list[str] = []
+    """Folders and files left out of the last upload."""
     summary: str | None
     summary_edited: bool
     summary_stale: bool

@@ -8,14 +8,14 @@ from app.ai.fake import FakeTransport
 from app.ai.service import AiService
 from app.campaign import agent
 from app.campaign.models import Campaign
-from app.chat.models import Chat
+from app.chat.models import Chat, Message
 from app.campaign.writing import remembered_note
 from app.config import Settings
 from app.db import SessionLocal
 from app.brand.images.picking import AssetSpec, rank_prompt
-from app.memory.models import CampaignRecord
-from app.memory.service import (HISTORY_IN_PLANNING, Memory, MemoryFull, history, near_duplicate, recent_images,
-                                undo_remembered)
+from app.memory.models import CampaignRecord, MemoryItem
+from app.memory.service import (HISTORY_IN_PLANNING, Memory, MemoryFull, changes_meaning, history, near_duplicate,
+                                recent_images, undo_remembered)
 from tests import brand_brain
 
 BRIEF = "Launch Acme Widget to platform leads on January 26. One email, one LinkedIn post, one X post."
@@ -105,15 +105,21 @@ def test_an_answer_to_a_question_card_is_never_learned(client: TestClient, brand
     assert client.get(f"/api/brands/{brand}/memory").json()["core"] == []
 
 
-def test_a_rewritten_item_keeps_its_old_text_and_undo_brings_it_back(client: TestClient, brand: int,
-                                                                      fake_ai: FakeTransport, settings: Settings):
+def _rewrite_note(session, brand: int, old: dict, text: str) -> Message:
+    """A "Remembered" note from before items were no longer rewritten in place: the item was rewritten, and the
+    note kept its old text. Such notes are still in old chats, and their Undo still works."""
+    item = session.get(MemoryItem, old["id"])
+    item.text, item.kind = text, "correction"
+    session.commit()
+    return Message(role="assistant", kind="memory", content=f"Remembered: {text} (this replaces “{old['text']}”)",
+                   data={"item_id": old["id"], "previous": {"text": old["text"], "kind": old["kind"],
+                                                            "source_chat_id": old["source_chat_id"]}})
+
+
+def test_undo_of_an_old_rewrite_note_brings_the_old_text_back(client: TestClient, brand: int):
     old = client.post(f"/api/brands/{brand}/memory", json={"text": "Hold the hero for Brand.", "kind": "decision"}).json()
     with SessionLocal() as session:
-        memory = Memory(session, AiService(session, fake_ai, settings))
-        item = memory.add(brand, "Use working-room photos for heroes.", "correction", None, replaces=old["id"])
-        note = remembered_note(item)
-
-        assert note.content == "Remembered: Use working-room photos for heroes. (this replaces “Hold the hero for Brand.”)"
+        note = _rewrite_note(session, brand, old, "Use working-room photos for heroes.")
         undo_remembered(session, note)
 
     core = client.get(f"/api/brands/{brand}/memory").json()["core"]
@@ -254,27 +260,32 @@ def test_a_full_memory_is_reported_in_the_chat(client: TestClient, brand: int):
     assert messages[-1]["kind"] == "note" and "Memory is full and every item is pinned" in messages[-1]["content"]
 
 
-def test_a_near_duplicate_updates_the_item_instead_of_adding_one(client: TestClient, brand: int):
-    client.post(f"/api/brands/{brand}/memory", json={"text": "Keep emails short."})
+def test_a_clear_duplicate_is_not_added_and_the_original_stays_as_it_was(client: TestClient, brand: int):
+    first = client.post(f"/api/brands/{brand}/memory", json={"text": "Keep emails short."}).json()
 
-    same = client.post(f"/api/brands/{brand}/memory", json={"text": "Emails should be short."}).json()
+    same = client.post(f"/api/brands/{brand}/memory", json={"text": "Emails should be short."})
     other = client.post(f"/api/brands/{brand}/memory", json={"text": "Never call it a toolkit."})
     other_again = client.post(f"/api/brands/{brand}/memory", json={"text": "Never call it a platform."})
 
-    assert same["replaced"] == "Keep emails short."
+    assert same.status_code == 409  # already in memory: the original wording and source are kept
     assert other.status_code == other_again.status_code == 201  # different instructions stay apart
-    texts = [i["text"] for i in client.get(f"/api/brands/{brand}/memory").json()["core"]]
-    assert texts == ["Emails should be short.", "Never call it a toolkit.", "Never call it a platform."]
+    core = client.get(f"/api/brands/{brand}/memory").json()["core"]
+    assert [i["text"] for i in core] == ["Keep emails short.", "Never call it a toolkit.", "Never call it a platform."]
+    assert core[0]["id"] == first["id"]
 
 
 @pytest.mark.parametrize("old, new, merged", [
     ("Keep emails short.", "Emails should be short.", True),
-    ("Never mention pricing in social posts.", "Always mention pricing in social posts.", True),
+    ("Never mention pricing in social posts.", "Always mention pricing in social posts.", False),  # a contradiction
     ("Keep LinkedIn posts under 150 words.", "Keep X posts under 150 words.", False),
     ("Use British spelling in emails.", "Use British spelling in blog posts.", False),
     ("Never call it a platform.", "Never call it a toolkit.", False),
+    ("Use British spelling.", "Use British spelling in emails.", False),  # a narrower rule, not the same one
+    ("Emails go out on Tuesdays.", "On Tuesdays, emails go out.", True),  # the same words in another order
+    ("Please keep the subject line short.", "The subject line must be short.", True),  # only trivial wording
+    ("Say toolkit, not platform.", "Say platform, not toolkit.", False),  # same words, opposite meaning
 ])
-def test_only_added_or_dropped_words_count_as_a_near_duplicate(old: str, new: str, merged: bool):
+def test_only_clear_duplicates_merge_on_their_own(old: str, new: str, merged: bool):
     assert near_duplicate(old, new) is merged
 
 
@@ -400,9 +411,7 @@ def test_undo_of_a_rewrite_is_refused_after_a_later_hand_edit(client: TestClient
     chat_id = client.post("/api/chats").json()["id"]
     old = client.post(f"/api/brands/{brand}/memory", json={"text": "Hold the hero for Brand.", "kind": "decision"}).json()
     with SessionLocal() as session:
-        item = Memory(session, AiService(session, fake_ai, settings)).add(brand, "Use working-room photos for heroes.",
-                                                                         "correction", None, replaces=old["id"])
-        note = remembered_note(item)
+        note = _rewrite_note(session, brand, old, "Use working-room photos for heroes.")
         note.chat_id = chat_id
         session.add(note)
         session.commit()
@@ -428,3 +437,80 @@ def test_undo_does_not_bring_back_wording_memory_holds_again(client: TestClient,
     assert "Never call Acme a platform." not in texts
     last = client.get(f"/api/chats/{chat_id}").json()["messages"][-1]
     assert last["content"].startswith("Undone. Not brought back, as memory already holds it again")
+
+
+# Group 4 of the design review: memory keeps an item's identity; a change never overwrites it
+
+@pytest.mark.parametrize("old, new, changed", [
+    ("Keep LinkedIn posts under 150 words.", "Keep LinkedIn posts under 200 words.", True),
+    ("Mention pricing in emails.", "Never mention pricing in emails.", True),
+    ("Use British spelling in emails.", "Use British spelling in blog posts.", True),
+    ("Keep emails brief.", "Emails should be short.", False),  # a real rewording: the model's call
+])
+def test_a_change_of_number_negation_or_channel_is_never_the_same(old: str, new: str, changed: bool):
+    assert changes_meaning(old, new) is changed
+
+
+def _memory(session, fake_ai: FakeTransport, settings: Settings) -> Memory:
+    return Memory(session, AiService(session, fake_ai, settings))
+
+
+def test_an_item_the_model_calls_the_same_is_not_added_and_the_original_is_untouched(
+        client: TestClient, brand: int, fake_ai: FakeTransport, settings: Settings):
+    old = client.post(f"/api/brands/{brand}/memory", json={"text": "Keep emails brief.", "kind": "preference"}).json()
+    with SessionLocal() as session:
+        added = _memory(session, fake_ai, settings).add(brand, "Emails should be short.", "preference", 9, same_as=old["id"])
+
+    assert added is None
+    core = client.get(f"/api/brands/{brand}/memory").json()["core"]
+    assert [(i["id"], i["text"], i["source_chat_id"]) for i in core] == [(old["id"], "Keep emails brief.", None)]
+
+
+def test_a_model_same_that_changes_a_number_keeps_both(client: TestClient, brand: int, fake_ai: FakeTransport,
+                                                      settings: Settings):
+    """The model's "same" used to rewrite the item: 150 became 200 with nothing kept but the note's Undo."""
+    old = client.post(f"/api/brands/{brand}/memory", json={"text": "Keep LinkedIn posts under 150 words."}).json()
+    with SessionLocal() as session:
+        item = _memory(session, fake_ai, settings).add(brand, "Keep LinkedIn posts under 200 words.", "preference", None,
+                                                        same_as=old["id"])
+        note = remembered_note(item)
+
+    assert item is not None and item.id != old["id"]
+    assert "This changes “Keep LinkedIn posts under 150 words.”, which is still in memory" in note.content
+    texts = [i["text"] for i in client.get(f"/api/brands/{brand}/memory").json()["core"]]
+    assert texts == ["Keep LinkedIn posts under 150 words.", "Keep LinkedIn posts under 200 words."]
+
+
+def test_a_change_is_kept_beside_the_old_item_until_the_marketer_replaces_it(client: TestClient, brand: int,
+                                                                           fake_ai: FakeTransport, settings: Settings):
+    chat_id = client.post("/api/chats").json()["id"]
+    old = client.post(f"/api/brands/{brand}/memory", json={"text": "Mention pricing in emails."}).json()
+    with SessionLocal() as session:
+        item = _memory(session, fake_ai, settings).add(brand, "Never mention pricing in emails.", "correction", chat_id,
+                                                        changes=old["id"])
+        note = remembered_note(item)
+        note.chat_id = chat_id
+        session.add(note)
+        session.commit()
+        note_id, new_id = note.id, item.id
+    core = lambda: [i["text"] for i in client.get(f"/api/brands/{brand}/memory").json()["core"]]  # noqa: E731
+    assert core() == ["Mention pricing in emails.", "Never mention pricing in emails."]  # both, nothing lost
+
+    assert client.post(f"/api/memory/notes/{note_id}/replace").status_code == 204
+    assert core() == ["Never mention pricing in emails."]
+    assert client.post(f"/api/memory/notes/{note_id}/replace").status_code == 409  # once only
+
+    assert client.post(f"/api/memory/notes/{note_id}/undo").status_code == 204
+    after = client.get(f"/api/brands/{brand}/memory").json()["core"]
+    assert [(i["id"], i["text"]) for i in after] == [(old["id"], "Mention pricing in emails.")]  # as before
+    assert new_id not in [i["id"] for i in after]
+
+
+def test_the_memory_step_asks_the_model_for_same_and_changes(client: TestClient, brand: int, fake_ai: FakeTransport):
+    chat_id = _planned(client)
+    _send(client, chat_id, "Never call it a platform.")
+
+    request = _requests(fake_ai, "memory_items")[-1]
+    properties = request.output_schema.schema["properties"]["items"]["items"]["properties"]
+    assert set(properties) == {"text", "kind", "same_as", "changes"}
+    assert "keeping two items is safer than losing one" in request.prompt.fixed

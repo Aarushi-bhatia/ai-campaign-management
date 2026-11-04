@@ -47,6 +47,7 @@ export function ChatPanel({ chatId, brandId, onChatCreated, onViewPrompt }: Prop
   // After a failed brief review, the brief is still the last message: Try again reviews it, rather than the
   // words "try again" becoming the brief.
   const retryReview = useMutation({ mutationFn: () => api.retryReview(chatId!), onSettled: () => refresh(chatId) });
+  const replaceMemory = useMutation({ mutationFn: (messageId: number) => api.replaceRemembered(messageId), onSettled: () => refresh(chatId) });
   const undoMemory = useMutation({ mutationFn: (messageId: number) => api.undoRemembered(messageId), onSettled: () => refresh(chatId) });
   const remember = useMutation({ mutationFn: (messageId: number) => api.acceptRemember(chatId!, messageId), onSettled: () => refresh(chatId) });
   const bringBack = useMutation({ mutationFn: (messageId: number) => api.bringBack(chatId!, messageId), onSettled: () => refresh(chatId) });
@@ -113,6 +114,7 @@ export function ChatPanel({ chatId, brandId, onChatCreated, onViewPrompt }: Prop
               onAnswer={(questionId, text) => answer.mutate({ chatId: chatId!, questionId, text })}
               onViewPrompt={onViewPrompt}
               onUndoMemory={(messageId) => undoMemory.mutate(messageId)}
+              onReplaceMemory={(messageId) => replaceMemory.mutate(messageId)}
               onRemember={(messageId) => remember.mutate(messageId)}
               onBringBack={(messageId) => bringBack.mutate(messageId)}
             />
@@ -125,9 +127,9 @@ export function ChatPanel({ chatId, brandId, onChatCreated, onViewPrompt }: Prop
           )}
           {answeringHere && <Working />}
           {writingNow && <p className="text-sm text-stone-400">Writing… each asset is checked and fixed before it shows as done.</p>}
-          {(sendError || answerError || undoMemory.error || retryReview.error) && (
+          {(sendError || answerError || undoMemory.error || replaceMemory.error || retryReview.error) && (
             <p className="text-sm text-red-600">
-              {(sendError ?? answerError ?? undoMemory.error ?? retryReview.error)!.message}
+              {(sendError ?? answerError ?? undoMemory.error ?? replaceMemory.error ?? retryReview.error)!.message}
             </p>
           )}
           {stage === "brief" && !busy && messages.at(-1)?.role === "user" && (
@@ -204,22 +206,31 @@ type ItemProps = {
   onAnswer: (questionId: number, text: string) => void;
   onViewPrompt: (callId: number) => void;
   onUndoMemory: (messageId: number) => void;
+  onReplaceMemory: (messageId: number) => void;
   onRemember: (messageId: number) => void;
   onBringBack: (messageId: number) => void;
 };
 
-function MessageItem({ message, call, openQuestionId, busy, onAnswer, onViewPrompt, onUndoMemory, onRemember, onBringBack }: ItemProps) {
+function MessageItem({ message, call, openQuestionId, busy, onAnswer, onViewPrompt, onUndoMemory, onReplaceMemory, onRemember, onBringBack }: ItemProps) {
   if (message.role === "user") return <UserBubble content={message.content} />;
   if (message.kind === "note") {
     return <p className="text-xs leading-relaxed text-stone-500">↳ {message.content}</p>;
   }
   if (message.kind === "memory") {
-    const data = message.data as { item_id: number; undone?: boolean };
+    const data = message.data as { item_id: number; undone?: boolean; changes?: { text: string }; replaced?: boolean };
     return (
       <p className="text-xs leading-relaxed text-violet-700">
         ✦ <span className={data.undone ? "line-through opacity-60" : ""}>{message.content}</span>
         {data.undone ? <span className="ml-2 text-stone-400">undone</span> : (
-          <button onClick={() => onUndoMemory(message.id)} className="ml-2 underline hover:text-violet-900">Undo</button>
+          <>
+            {data.changes && !data.replaced && (
+              <button onClick={() => onReplaceMemory(message.id)} className="ml-2 underline hover:text-violet-900">
+                Replace it
+              </button>
+            )}
+            {data.replaced && <span className="ml-2 text-stone-400">replaced</span>}
+            <button onClick={() => onUndoMemory(message.id)} className="ml-2 underline hover:text-violet-900">Undo</button>
+          </>
         )}
       </p>
     );

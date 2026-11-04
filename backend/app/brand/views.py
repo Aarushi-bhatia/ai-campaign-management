@@ -25,7 +25,7 @@ from app.brand.schemas import (
     ReadingCostOut,
 )
 from app.brand.service import BrandService
-from app.brand.settle import conflict_target, winning_fact_ids
+from app.brand.settle import chosen_winner, conflict_target, decisions_of, winning_fact_ids
 
 RULE_ORDER = {"needs_human": 0, "you": 1}
 
@@ -61,6 +61,7 @@ def brand_view(session: Session, brands: BrandService, brand: Brand) -> BrandOut
             if l.source_id in path_of and l.target_id in path_of
         ],
         decisions=[DecisionOut.model_validate(d) for d in brands.decisions(brand.id)],
+        excluded=brands.exclusions(brand.id),
         summary=brand.summary,
         summary_edited=brand.summary_edited,
         summary_stale=brand.summary_stale,
@@ -105,6 +106,7 @@ def _conflicts(session: Session, brand_id: int, path_of: dict[int, str]) -> list
     rows = list(session.scalars(select(Conflict).where(Conflict.brand_id == brand_id)))
     fact_ids = [fact_id for row in rows for fact_id in row.fact_ids]
     facts = {f.id: f for f in session.scalars(select(Fact).where(Fact.id.in_(fact_ids)))}
+    decisions = decisions_of(session, brand_id)
     out = []
     for row in rows:
         members = [facts[fact_id] for fact_id in row.fact_ids if fact_id in facts]
@@ -131,7 +133,8 @@ def _conflicts(session: Session, brand_id: int, path_of: dict[int, str]) -> list
                                     attribute=f.attribute, value=f.value, kind=f.kind, evidence=f.evidence)
                     for f in members
                 ],
-                target=conflict_target(row.subject_key, paths),
+                target=conflict_target(row, facts, paths),
+                decided_target=chosen_winner(row, facts, paths, decisions)[2],
                 call_id=row.call_id,
             )
         )

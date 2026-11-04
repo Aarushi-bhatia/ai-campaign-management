@@ -81,13 +81,14 @@ export const api = {
   getMemory: (brandId: number) =>
     request<{ core: MemoryItem[]; history: CampaignRecord[] }>(`/api/brands/${brandId}/memory`),
   addMemory: (brandId: number, text: string, kind: MemoryItem["kind"]) =>
-    request<MemoryItem & { dropped: string[]; replaced: string | null }>(`/api/brands/${brandId}/memory`, {
+    request<MemoryItem & { dropped: string[]; replaced: string | null; changes: string | null }>(`/api/brands/${brandId}/memory`, {
       method: "POST", body: JSON.stringify({ text, kind }),
     }),
   changeMemory: (id: number, change: { text?: string; pinned?: boolean }) =>
     request<MemoryItem>(`/api/memory/${id}`, { method: "PUT", body: JSON.stringify(change) }),
   deleteMemory: (id: number) => request<void>(`/api/memory/${id}`, { method: "DELETE" }),
   undoRemembered: (messageId: number) => request<void>(`/api/memory/notes/${messageId}/undo`, { method: "POST" }),
+  replaceRemembered: (messageId: number) => request<void>(`/api/memory/notes/${messageId}/replace`, { method: "POST" }),
   deleteRecord: (id: number) => request<void>(`/api/campaign-records/${id}`, { method: "DELETE" }),
   changeRecord: (id: number, change: Partial<Pick<CampaignRecord, "name" | "goal" | "audience" | "angle">>) =>
     request<CampaignRecord>(`/api/campaign-records/${id}`, { method: "PUT", body: JSON.stringify(change) }),

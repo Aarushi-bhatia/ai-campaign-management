@@ -13,7 +13,8 @@ from app.brand.models import Brand
 from app.chat.models import Message
 from app.db import get_session
 from app.memory.models import CampaignRecord, MemoryItem
-from app.memory.service import KINDS, Memory, MemoryChanged, MemoryFull, core, history, item_out, undo_remembered
+from app.memory.service import (KINDS, Memory, MemoryChanged, MemoryFull, core, history, item_out, replace_changed,
+                                undo_remembered)
 
 router = APIRouter(prefix="/api", tags=["memory"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -60,9 +61,9 @@ def add_memory(brand_id: int, body: MemoryIn, session: SessionDep, ai: Annotated
         raise HTTPException(409, str(full))
     if item is None:
         raise HTTPException(409, "That is already in memory.")
-    previous = getattr(item, "previous", None)
-    return {**item_out(item), "dropped": getattr(item, "dropped", None) or [],
-            "replaced": previous["text"] if previous else None}
+    changes = getattr(item, "changes", None)
+    return {**item_out(item), "dropped": getattr(item, "dropped", None) or [], "replaced": None,
+            "changes": changes["text"] if changes else None}
 
 
 def _item(session: Session, item_id: int) -> MemoryItem:
@@ -92,6 +93,18 @@ def undo_remembered_note(message_id: int, session: SessionDep):
     try:
         undo_remembered(session, note)
     except (MemoryFull, MemoryChanged) as refused:
+        raise HTTPException(409, str(refused))
+
+
+@router.post("/memory/notes/{message_id}/replace", status_code=204)
+def replace_from_note(message_id: int, session: SessionDep):
+    """The "Replace it" on a "Remembered" note whose new item changes an older one."""
+    note = session.get(Message, message_id)
+    if note is None or note.kind != "memory":
+        raise HTTPException(404, "No such memory note.")
+    try:
+        replace_changed(session, note)
+    except MemoryChanged as refused:
         raise HTTPException(409, str(refused))
 
 

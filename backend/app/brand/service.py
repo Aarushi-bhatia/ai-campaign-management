@@ -11,7 +11,7 @@ from app.brand.files import IncomingFile, UnsafePath
 from app.brand.models import Brand, BrandDecision, BrandFile
 from app.brand.parsing import decode
 from app.brand.reader import BrandReader
-from app.brand.settle import settle
+from app.brand.settle import same_conflict, settle
 from app.config import Settings
 from app.jobs import JobRunner
 
@@ -31,6 +31,9 @@ class NothingToRead(ValueError):
 class BadCorrection(ValueError):
     pass
 
+
+EXCLUDED = "excluded"
+"""A brand_decisions row for a folder or file pattern left out of the brand's uploads (such as briefs)."""
 
 CORRECTION_VALUES: dict[str, tuple[str, ...]] = {
     "document_status": ("current", "replaced", "draft", "archived"),
@@ -79,6 +82,7 @@ class BrandService:
         brand = Brand(name=name.strip() or "Brand", source=source)
         self._session.add(brand)
         self._session.flush()
+        self._remember_exclusions(brand.id, exclude)
         self._store(brand, kept)
         self.resume_reading(brand.id)
         return brand
@@ -91,6 +95,7 @@ class BrandService:
             raise NothingToRead("None of the chosen files can be used.")
         _check_paths({f.path for f in brand.files}, kept)
         self._claim(brand_id)
+        self._remember_exclusions(brand_id, exclude)
         self._store(brand, kept)
         self.resume_reading(brand.id)
         return brand
@@ -126,9 +131,24 @@ class BrandService:
         settle(self._session, brand_id)
 
     def decisions(self, brand_id: int) -> list[BrandDecision]:
-        return list(
-            self._session.scalars(select(BrandDecision).where(BrandDecision.brand_id == brand_id).order_by(BrandDecision.id))
-        )
+        """The marketer's corrections, for the Brand page. The folders left out of uploads aren't corrections."""
+        return list(self._session.scalars(
+            select(BrandDecision).where(BrandDecision.brand_id == brand_id, BrandDecision.kind != EXCLUDED)
+            .order_by(BrandDecision.id)
+        ))
+
+    def exclusions(self, brand_id: int) -> list[str]:
+        """The folders and files left out of the last upload, so Update brand starts from the same choice."""
+        return list(self._session.scalars(
+            select(BrandDecision.target).where(BrandDecision.brand_id == brand_id, BrandDecision.kind == EXCLUDED)
+            .order_by(BrandDecision.id)
+        ))
+
+    def _remember_exclusions(self, brand_id: int, exclude: list[str]) -> None:
+        self._session.execute(delete(BrandDecision).where(BrandDecision.brand_id == brand_id,
+                                                          BrandDecision.kind == EXCLUDED))
+        self._session.add_all(BrandDecision(brand_id=brand_id, kind=EXCLUDED, target=pattern, value="")
+                              for pattern in dict.fromkeys(p.strip() for p in exclude if p.strip()))
 
     def edit_summary(self, brand_id: int, text: str) -> Brand:
         brand = self.get(brand_id)
@@ -207,11 +227,10 @@ def save_correction(session: Session, brand_id: int, kind: str, target: str, val
     allowed = CORRECTION_VALUES.get(kind)
     if allowed is None or (allowed and value not in allowed):
         raise BadCorrection(f"Can't set {kind} to {value!r}.")
-    session.execute(
-        delete(BrandDecision).where(
-            BrandDecision.brand_id == brand_id, BrandDecision.kind == kind, BrandDecision.target == target
-        )
-    )
+    same = BrandDecision.target == target
+    if kind == "conflict_winner" and (conflict := same_conflict(target)):
+        same |= BrandDecision.target.startswith(conflict, autoescape=True)  # an older choice for this conflict
+    session.execute(delete(BrandDecision).where(BrandDecision.brand_id == brand_id, BrandDecision.kind == kind, same))
     session.add(BrandDecision(brand_id=brand_id, kind=kind, target=target, value=value))
     session.commit()
     settle(session, brand_id)

@@ -24,6 +24,8 @@ services:
       DATA_DIR: /data
       # BRAND_DIR in .env is a folder on your machine; inside the container it is mounted here.
       BRAND_DIR: /preload-brand
+      # The folder as named on your machine, so a different BRAND_DIR is preloaded as a different brand.
+      BRAND_SOURCE: ${BRAND_DIR:-}
     volumes:
       - ./backend:/app
       - app-data:/data

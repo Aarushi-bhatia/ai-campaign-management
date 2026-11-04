@@ -11,7 +11,7 @@ from app.brand.files import IncomingFile, UnsafePath
 from app.ai.deps import get_ai_service
 from app.ai.service import AiCallFailed, AiService
 from app.brand.files import storage_path
-from app.brand.images.library import pick
+from app.brand.images.library import BRAND_PAGE_PICK, pick
 from app.brand.images.picking import AssetSpec
 from app.brand.schemas import (
     BlockedOut, BrandOut, BrandSummary, ChoiceOut, CorrectionIn, PickIn, PickOut, SummaryIn,
@@ -168,7 +168,7 @@ def pick_images(
         campaign_rules=body.campaign_rules, exclude_paths=frozenset(body.exclude),
     )
     try:
-        result = pick(session, ai, brand, spec)
+        result = pick(session, ai, brand, spec, step=BRAND_PAGE_PICK)
     except AiCallFailed as failure:
         raise HTTPException(502, f"The AI request failed: {failure}")
     return PickOut(

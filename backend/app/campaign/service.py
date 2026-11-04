@@ -429,7 +429,9 @@ class CampaignService:
             research = self._research(campaign)
             new += [self._post(chat, "assistant", "note", line)
                     for line in research.on_request(route.research_query, [a.plan_id for a, _ in route.targets])]
-        lines, total = [], self._cost([reply.call_id])
+        # Every call the edit made, so the Costs tab sums the same calls as the "Edit cost" line.
+        lines, call_ids = [], [reply.call_id]
+        total = self._cost(call_ids)
         for asset, field_name in route.targets:
             part = f" ({field_name})" if field_name else ""
             try:
@@ -438,6 +440,7 @@ class CampaignService:
                 # The other assets' edits still stand (each saved as it finished), so the reply lists them all.
                 cost = self._cost([failure.call_id])
                 total += cost
+                call_ids.append(failure.call_id)
                 lines.append(f"{writer.TYPE_LABELS[asset.type]} “{asset.title}”{part}: couldn't be edited ({failure}), "
                              f"so it is as it was. Ask again to retry it ({_usd(cost)}).")
                 continue
@@ -448,11 +451,13 @@ class CampaignService:
             except EmptyEdit as empty:
                 cost = self._cost([empty.args[0]])
                 total += cost
+                call_ids.append(empty.args[0])
                 lines.append(f"{writer.TYPE_LABELS[asset.type]} “{asset.title}”{part}: the edit would have left it with "
                              f"no text, so I left it as it is ({_usd(cost)}).")
                 continue
             cost = self._cost(draft.call_ids)
             total += cost
+            call_ids += draft.call_ids
             warn = f"; {len(draft.warnings)} warning{'s' if len(draft.warnings) > 1 else ''}" if draft.warnings else ""
             if any(w["check"] == "not checked" for w in draft.warnings):
                 warn = "; its checks couldn't run, so press Check again on it"
@@ -465,7 +470,8 @@ class CampaignService:
         head = route.reply or "Done."
         body = "\n".join(f"- {line}" for line in lines)
         return new + [self._post(chat, "assistant", "edit", f"{head}\n{body}\nEdit cost: {_usd(total)}.",
-                                 {"asset_ids": [a.id for a, _ in route.targets], "cost_usd": total},
+                                 {"asset_ids": [a.id for a, _ in route.targets], "cost_usd": total,
+                                  "call_ids": [i for i in call_ids if i is not None]},
                                  call_id=reply.call_id)]
 
     def _add_assets(self, chat: Chat, campaign: Campaign, route: editing.Route, call_id: int) -> list[Message]:
@@ -498,7 +504,7 @@ class CampaignService:
         note = self._post(chat, "assistant", "edit",
                           f"{route.reply or 'Adding them now.'}\n{lines}\nWriting {'it' if len(added) == 1 else 'them'} "
                           "now; the assets already written stay as they are.",
-                          {"asset_ids": [a.id for a in campaign.assets[start:]]}, call_id=call_id)
+                          {"asset_ids": [a.id for a in campaign.assets[start:]], "call_ids": [call_id]}, call_id=call_id)
         self._session.commit()  # the writer works in its own session, so the new assets must be saved first
         runtime = self._runtime
         if runtime is not None:

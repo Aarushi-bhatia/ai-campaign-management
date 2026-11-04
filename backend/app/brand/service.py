@@ -8,6 +8,7 @@ from app.ai.transport import AiTransport
 from app.brand import cards
 from app.brand import files as brand_files
 from app.brand.files import IncomingFile, UnsafePath
+from app.brand.images.library import BRAND_PAGE_PICK
 from app.brand.models import Brand, BrandDecision, BrandFile
 from app.brand.parsing import decode
 from app.brand.reader import BrandReader
@@ -209,7 +210,7 @@ class BrandService:
                 func.count(AiCall.id),
                 func.coalesce(func.sum(AiCall.tokens_in), 0),
                 func.coalesce(func.sum(AiCall.tokens_out), 0),
-            ).where(AiCall.brand_id == brand_id, AiCall.chat_id.is_(None))
+            ).where(AiCall.brand_id == brand_id, AiCall.chat_id.is_(None), AiCall.step != BRAND_PAGE_PICK)
         ).one()
         return ReadingCost(usd=usd, calls=calls, tokens_in=tokens_in, tokens_out=tokens_out)
 

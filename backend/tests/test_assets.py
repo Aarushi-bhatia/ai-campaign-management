@@ -754,6 +754,27 @@ def test_the_cost_report_has_stages_assets_and_edits(client: TestClient, brand: 
     assert 0 <= report["total"]["cache_hit_rate"] <= 1
 
 
+def test_a_chat_edit_costs_the_same_in_the_costs_tab_as_in_the_chat(client: TestClient, brand: int):
+    """The Costs tab summed only the versions' calls, so it left out the call that routes the request and the
+    assets whose edit failed, and showed less than the chat's "Edit cost" (#27). The memory call after the
+    edit isn't part of it either (#43)."""
+    chat_id = _written(client)
+    edit = _send(client, chat_id, "Shorten the second post")[-1]
+    with SessionLocal() as session:  # the fake AI's calls cost nothing; give each one a price
+        calls = session.scalars(select(AiCall).where(AiCall.chat_id == chat_id)).all()
+        for call in calls:
+            call.cost_usd = 0.01
+        session.commit()
+        steps = {c.id: c.step for c in calls}
+
+    report = client.get(f"/api/chats/{chat_id}/costs").json()
+
+    ids = edit["data"]["call_ids"]
+    assert any(steps[i] == "Edit request" for i in ids)
+    assert not any(steps[i].startswith(("Memory", "Campaign record")) for i in ids)
+    assert [e["cost_usd"] for e in report["edits"] if e["reason"] == "chat edit"] == [pytest.approx(0.01 * len(ids))]
+
+
 def test_writing_cut_off_by_a_restart_starts_again(client: TestClient, brand: int, fake_ai: FakeTransport,
                                                     fake_web: FakeWebResearch, settings):
     from app.campaign.models import Campaign

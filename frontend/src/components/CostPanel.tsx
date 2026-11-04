@@ -31,13 +31,36 @@ export function CostPanel({ chatId, brandId }: { chatId: number; brandId: number
           <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-stone-400">Edits</p>
           <ul className="space-y-1.5 text-xs">
             {data.edits.map((e) => (
-              <li key={`${e.asset_id}-${e.version}`} className="flex justify-between gap-3">
-                <span className="truncate">{e.title} · v{e.version} {e.reason}{e.note && `: ${e.note}`}</span>
+              <li key={e.message_id ? `m${e.message_id}` : `${e.asset_id}-${e.version}`} className="flex justify-between gap-3">
+                <span className="truncate">
+                  {e.titles.join(", ")}{e.version ? ` · v${e.version}` : ""} {e.reason}{e.note && `: ${e.note}`}
+                </span>
                 <span className="shrink-0">{formatCost(e.cost_usd)}</span>
               </li>
             ))}
           </ul>
         </section>
+      )}
+      {data.steps.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-[11px] font-medium uppercase tracking-[0.08em] text-stone-400">
+            Every call ({data.steps.length})
+          </summary>
+          <table className="mt-2 w-full text-xs">
+            <thead className="text-stone-400">
+              <tr><th className="text-left font-normal"></th><th className="text-right font-normal">Cached</th><th className="text-right font-normal">Cost</th></tr>
+            </thead>
+            <tbody>
+              {data.steps.map((s) => (
+                <tr key={s.id} className="border-t border-stone-100">
+                  <td className="max-w-56 truncate py-1.5" title={`${s.step} · ${s.model}`}>{s.step}</td>
+                  <td className="text-right">{Math.round(s.cache_hit_rate * 100)}%</td>
+                  <td className="text-right">{s.cost_usd == null ? "–" : formatCost(s.cost_usd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
       )}
     </div>
   );

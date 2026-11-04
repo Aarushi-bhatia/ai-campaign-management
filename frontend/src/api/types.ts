@@ -118,7 +118,8 @@ export type CostReport = {
   total: CostTotals;
   stages: (CostTotals & { stage: string })[];
   assets: (CostTotals & { asset_id: number; title: string })[];
-  edits: { asset_id: number; title: string; version: number; reason: string; note: string; cost_usd: number }[];
+  /** Chat edits (one per edit message, with every call it made), then hand edits and undos. */
+  edits: { message_id?: number; asset_id?: number; titles: string[]; version?: number; reason: string; note: string; cost_usd: number }[];
   steps: { id: number; step: string; model: string; cost_usd: number | null; tokens_in: number; tokens_cached: number; cache_hit_rate: number }[];
 };
 

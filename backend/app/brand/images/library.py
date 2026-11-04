@@ -59,6 +59,10 @@ def image_views(session: Session, brand_id: int) -> list[ImageView]:
     ]
 
 
+BRAND_PAGE_PICK = "Image choice (Brand page)"
+"""The step name of a pick tried on the Brand page. It has no chat, but it isn't part of reading the brand."""
+
+
 def rules_for(brand: Brand) -> dict:
     return brand.image_rules or channel_rules.empty_rules()
 

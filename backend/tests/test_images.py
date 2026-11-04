@@ -274,3 +274,23 @@ def test_an_image_whose_changed_restrictions_could_not_be_read_is_blocked(client
     assert brand["status"] == "ready"
     assert hero["notes"] is None and "couldn't be" in hero["blocked"]  # was still usable
     assert _images(client, brand_id)["images/office-desk.jpg"]["notes"] is not None  # unchanged images keep theirs
+
+
+
+def test_a_pick_tried_on_the_brand_page_is_not_reading_cost(client: TestClient):
+    """It has no chat, so it was counted as reading the brand (#38)."""
+    from app.ai.models import AiCall
+    from app.brand.images.library import BRAND_PAGE_PICK
+    from app.db import SessionLocal
+    brand_id = _upload(client)
+    before = client.get(f"/api/brands/{brand_id}").json()["reading_cost"]
+
+    result = client.post(f"/api/brands/{brand_id}/images/pick",
+                         json={"channel": "email", "asset_type": "launch email", "message": "Our team shipped."}).json()
+    with SessionLocal() as session:  # the fake AI's calls cost nothing; give the pick a price
+        call = session.get(AiCall, result["call_id"])
+        assert call.step == BRAND_PAGE_PICK
+        call.cost_usd = 1.0
+        session.commit()
+
+    assert client.get(f"/api/brands/{brand_id}").json()["reading_cost"] == before

@@ -70,12 +70,13 @@ def run(name: str, brief: str) -> dict:
             raise SystemExit(f"[{name}] writing didn't finish in {WAIT_SECONDS}s")
         time.sleep(5)
     assets = call("GET", f"/api/chats/{chat_id}/assets")
-    before_edit = call("GET", f"/api/chats/{chat_id}/costs")["total"]["cost_usd"]
     edit = next((EDITS[a["type"]] for a in assets if a["type"] in ("linkedin_post", "x_post")), EDITS[assets[0]["type"]])
     print(f"[{name}] {sum(a['state'] == 'done' for a in assets)} of {len(assets)} assets written. Edit: {edit}", flush=True)
     reply = call("POST", f"/api/chats/{chat_id}/messages", json={"content": edit})
     costs = call("GET", f"/api/chats/{chat_id}/costs")
-    edit_cost = costs["total"]["cost_usd"] - before_edit
+    # The edit's own calls, as its message lists them: the totals before and after also caught the memory call
+    # that runs after the reply.
+    edit_cost = sum(m["data"].get("cost_usd", 0) for m in reply if m["kind"] == "edit")
     chat = call("GET", f"/api/chats/{chat_id}")
     folder = OUT / re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     folder.mkdir(parents=True, exist_ok=True)

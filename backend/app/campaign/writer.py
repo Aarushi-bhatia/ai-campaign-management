@@ -190,6 +190,34 @@ def edit_task(asset_type: str, title: str, content: dict[str, Any], instruction:
                             research=research_text(research))
 
 
+def content_problem(asset_type: str, content: dict[str, Any]) -> str | None:
+    """What is wrong with the shape of typed-in content, or None. Only the fields given are checked: a field left
+    out keeps its old value."""
+    fields = {**FIELDS[asset_type], "sources": TEXT_LIST}
+    for name, value in content.items():
+        if name in fields and (problem := _shape(fields[name], value, name)):
+            return problem
+    return None
+
+
+def _shape(schema: dict[str, Any], value: Any, where: str) -> str | None:
+    if schema["type"] == "string":
+        if not isinstance(value, str):
+            return f"{where} must be text."
+        if "enum" in schema and value not in schema["enum"]:
+            return f"{where} must be one of: {', '.join(schema['enum'])}."
+    elif schema["type"] == "array":
+        if not isinstance(value, list):
+            return f"{where} must be a list."
+        return next((p for i, item in enumerate(value) if (p := _shape(schema["items"], item, f"{where} {i + 1}"))), None)
+    elif schema["type"] == "object":
+        if not isinstance(value, dict):
+            return f"{where} must have the fields {', '.join(schema['properties'])}."
+        return next((p for key, sub in schema["properties"].items()
+                     if key in value and (p := _shape(sub, value[key], f"{where} {key}"))), None)
+    return None
+
+
 def content_from(asset_type: str, reply: dict[str, Any]) -> dict[str, Any]:
     """The asset's own fields and sources, without the reply's notes."""
     return {key: reply[key] for key in (*FIELDS[asset_type], "sources")}

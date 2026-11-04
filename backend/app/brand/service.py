@@ -7,7 +7,7 @@ from app.ai.models import AiCall
 from app.ai.transport import AiTransport
 from app.brand import cards
 from app.brand import files as brand_files
-from app.brand.files import IncomingFile
+from app.brand.files import IncomingFile, UnsafePath
 from app.brand.models import Brand, BrandDecision, BrandFile
 from app.brand.parsing import decode
 from app.brand.reader import BrandReader
@@ -75,6 +75,7 @@ class BrandService:
         kept = _usable(incoming, exclude)
         if not any(brand_files.kind_of(f.path) == "document" for f in kept):
             raise NothingToRead("The folder has no text documents (.md, .markdown or .txt) to read.")
+        _check_paths(set(), kept)
         brand = Brand(name=name.strip() or "Brand", source=source)
         self._session.add(brand)
         self._session.flush()
@@ -88,6 +89,7 @@ class BrandService:
         kept = _usable(incoming, exclude)
         if not kept:
             raise NothingToRead("None of the chosen files can be used.")
+        _check_paths({f.path for f in brand.files}, kept)
         self._claim(brand_id)
         self._store(brand, kept)
         self.resume_reading(brand.id)
@@ -190,6 +192,15 @@ class BrandService:
             ).where(AiCall.brand_id == brand_id, AiCall.chat_id.is_(None))
         ).one()
         return ReadingCost(usd=usd, calls=calls, tokens_in=tokens_in, tokens_out=tokens_out)
+
+
+def _check_paths(existing: set[str], incoming: list[IncomingFile]) -> None:
+    """Refuses, before anything is written, an upload where one path is a file and also a folder ("a.md" and
+    "a.md/b.md"): it can't be stored, and would fail halfway, leaving some files written."""
+    paths = sorted(existing | {f.path for f in incoming})
+    for path, after in zip(paths, paths[1:]):
+        if after.startswith(f"{path}/"):
+            raise UnsafePath(f"“{path}” is both a file and a folder, so nothing was saved. Rename one of them.")
 
 
 def save_correction(session: Session, brand_id: int, kind: str, target: str, value: str) -> None:

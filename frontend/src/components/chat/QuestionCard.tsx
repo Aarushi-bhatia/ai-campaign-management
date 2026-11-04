@@ -38,6 +38,8 @@ export function QuestionCard({ question, open, busy, onAnswer }: Props) {
         <p className="mt-3 text-stone-500">
           Answered: <span className="font-medium text-stone-800">{question.answer}</span>
         </p>
+      ) : question.expired ? (
+        <p className="mt-3 text-stone-500">No longer needed: the plan was approved before this was answered.</p>
       ) : (
         open && (
           <>

@@ -5,6 +5,7 @@ quotes given as proof must be in the named document, and plans only use allowed 
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -88,12 +89,10 @@ class CampaignAgent:
 
     def channels_in_use(self) -> list[str]:
         """Campaign channels the brand's current documents mention. All of them when none are mentioned."""
-        text = " ".join(
+        return channels_mentioned(" ".join(
             f"{d.path} {' '.join((d.card or {}).get('rules_on', []))} {' '.join((d.card or {}).get('mentions', {}).get('channels', []))}"
             for d in self._documents() if d.status == "current"
-        ).lower()
-        used = [c for c, words in CHANNEL_WORDS.items() if any(w in text for w in (*words, c.replace("_", " ")))]
-        return used or list(CHANNEL_WORDS)
+        ))
 
     def conflict_notes(self, output: str) -> list[str]:
         """One line for each settled conflict whose winning facts show up in what the agent wrote.
@@ -235,6 +234,32 @@ def _appears(value: str, written: str) -> bool:
     return len(value) >= 4 and value in written
 
 
+def channels_mentioned(text: str) -> list[str]:
+    """The channels named in the text, as whole words: "x" in "context.md" is not the X channel, but "x" in
+    "channels/x-playbook.md" is. All of them when none is named."""
+    text = text.lower()
+    used = [c for c, words in CHANNEL_WORDS.items()
+            if any(re.search(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])", text) for w in (*words, c.replace("_", " ")))]
+    return used or list(CHANNEL_WORDS)
+
+
+def plan_problem(cards: list[dict[str, Any]], channels: list[str]) -> str | None:
+    """What is wrong with a plan's cards, or None. The same rules for every way a plan is saved or approved:
+    at least one card, each id once, only allowed asset types, only channels the brand uses."""
+    if not cards:
+        return "A plan needs at least one asset."
+    ids = [card.get("id") for card in cards]
+    if len(set(ids)) != len(ids):
+        return "Each plan card can appear only once."
+    for card in cards:
+        if card.get("type") not in prompts.CHANNEL_OF:
+            return f"“{card.get('title', '')}” has an asset type the app can't write."
+        if prompts.CHANNEL_OF[card["type"]] not in channels:
+            return (f"The brand's documents don't cover the {prompts.CHANNEL_OF[card['type']].replace('_', ' ')} "
+                    f"channel, so “{card.get('title', '')}” can't be planned.")
+    return None
+
+
 FOLLOW_BRIEF = "Follow the brief as written"
 
 
@@ -257,9 +282,16 @@ def _options(raw: list[str], follow_brief: bool = False) -> list[dict[str, str]]
     labels = [label.strip() for label in raw if label.strip()][:MAX_OPTIONS]
     if follow_brief and not any("brief" in label.lower() for label in labels):
         labels = [*labels[: MAX_OPTIONS - 1], FOLLOW_BRIEF]
-    if len(labels) < 2:
-        labels.append("You decide")
-    return [{"label": label, "value": label} for label in labels]
+    return [{"label": label, "value": label} for label in at_least_two(labels)]
+
+
+def at_least_two(labels: list[str]) -> list[str]:
+    """A question card always offers a real choice: two options at least, never the same one twice."""
+    labels = list(dict.fromkeys(labels))
+    for fallback in ("You decide", "Leave it as it is"):
+        if len(labels) < 2 and fallback not in labels:
+            labels.append(fallback)
+    return labels
 
 
 def _clean(lines: list[str]) -> list[str]:

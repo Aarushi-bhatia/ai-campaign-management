@@ -8,6 +8,8 @@ export type QuestionData = {
   options: { label: string; value: string }[];
   answer: string | null;
   remaining: number;
+  /** Asked before the plan was approved and left open; it no longer applies. */
+  expired?: boolean;
 };
 
 export type Message = {

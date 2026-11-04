@@ -1,6 +1,8 @@
 """The only path to the web: search, with each result's page text. Tests swap it for a fake."""
 
+import re
 from collections.abc import Callable
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -8,6 +10,9 @@ import httpx
 
 FIRECRAWL_SEARCH = "https://api.firecrawl.dev/v2/search"
 DATE_KEYS = ("publishedTime", "article:published_time", "datePublished", "date", "modifiedTime")
+ISO_START = re.compile(r"^\d{4}-\d{2}-\d{2}")
+DATE_LAYOUTS = ("%B %d, %Y", "%b %d, %Y", "%d %B %Y", "%d %b %Y", "%Y/%m/%d", "%a, %d %b %Y %H:%M:%S %Z",
+                "%a, %d %b %Y %H:%M:%S %z")
 
 
 @dataclass(frozen=True)
@@ -58,11 +63,23 @@ class FirecrawlClient:
 
 
 def _date(metadata: dict) -> str:
+    """The page's date as YYYY-MM-DD when it can be read, otherwise as the page wrote it, never cut short."""
     for key in DATE_KEYS:
         value = metadata.get(key)
         if isinstance(value, str) and value.strip():
-            return value.strip()[:10]
+            return _iso_date(value.strip())
     return ""
+
+
+def _iso_date(value: str) -> str:
+    if ISO_START.match(value):
+        return value[:10]
+    for layout in DATE_LAYOUTS:
+        try:
+            return datetime.strptime(value, layout).date().isoformat()
+        except ValueError:
+            continue
+    return value[:40]
 
 
 class FakeWebResearch:

@@ -51,6 +51,7 @@ export const api = {
     request<Campaign>(`/api/chats/${chatId}/research/${findingId}`, { method: "DELETE" }),
   bringBackFinding: (chatId: number, findingId: string) =>
     request<Campaign>(`/api/chats/${chatId}/research/${findingId}/restore`, { method: "POST" }),
+  retryReview: (chatId: number) => request<Message[]>(`/api/chats/${chatId}/review`, { method: "POST" }),
   retryResearch: (chatId: number) =>
     request<Message[]>(`/api/chats/${chatId}/research/retry`, { method: "POST" }),
   betterSource: (chatId: number, findingId: string) =>

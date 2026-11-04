@@ -90,6 +90,9 @@ class CampaignResearch:
         """Research the marketer asked for directly, during an edit. Its findings count as approved."""
         if self.web is None:
             return ["Web research is off (no FIRECRAWL_API_KEY)."]
+        if not asset_ids:
+            # A finding with no asset is never used, so nothing is searched (or paid for).
+            return [f"I didn't search for “{query}”: say which asset the research is for."]
         result = self._search(query, asset_ids, skip=frozenset(f["url"] for f in self.campaign.research))
         if result.error:
             return [f"Web search for “{query}” failed ({result.error}). Ask again to retry."]

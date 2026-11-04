@@ -12,7 +12,7 @@ from app.ai.service import AiCallFailed, AiService
 from app.brand.models import Brand, Entity
 from app.brand.service import BadCorrection, save_correction
 from app.campaign import editing, stages, writer
-from app.campaign.agent import CampaignAgent, new_card_id, used_card_ids
+from app.campaign.agent import CampaignAgent, at_least_two, new_card_id, plan_problem, used_card_ids
 from app.campaign.assets import AssetChanged, AssetWork, EmptyEdit
 from app.campaign.models import Asset, Campaign
 from app.campaign.prompts import ASSET_TYPES, CHANNEL_OF
@@ -44,12 +44,27 @@ class UnknownAsset(ValueError):
     pass
 
 
+class BadContent(ValueError):
+    """Typed-in asset content of the wrong shape (a list where text goes, say)."""
+
+
+class QuestionExpired(stages.WrongStage):
+    """The question was asked at an earlier stage (before the plan was approved, say), so it no longer applies."""
+
+
 class PlanChanged(stages.WrongStage):
     """The plan or its research changed since this was started (or since the user last saw it)."""
 
 
 PLAN_CHANGED = ("The plan changed while I was working on this: it was approved, or changed somewhere else. So I "
                 "left it as it is, and nothing from this step was kept. The plan shown now is the latest.")
+
+
+def _expired(question: dict[str, Any], stage: str) -> bool:
+    """A question only applies at the stage it was asked at. One from before questions recorded their stage, still
+    open once the assets are written, was about the plan (only questions about assets carry "about")."""
+    asked = question.get("stage") or (None if "about" in question or stage != stages.DONE else stages.PLAN_READY)
+    return bool(question.get("expired")) or (asked is not None and asked != stage)
 
 
 def _usd(amount: float) -> str:
@@ -116,6 +131,9 @@ class CampaignService:
         if not 0 <= question_id < len(campaign.questions) or campaign.questions[question_id].get("answer"):
             raise UnknownQuestion("That question isn't open.")
         question = dict(campaign.questions[question_id])
+        if _expired(question, campaign.stage):
+            raise QuestionExpired("That question was asked before the plan was approved, so it no longer applies. "
+                                  "Ask for the change in the chat instead.")
         option = next((o for o in question["options"] if answer in (o["value"], o["label"])), None)
         question["answer"] = option["label"] if option else answer
         campaign.questions = [*campaign.questions[:question_id], question, *campaign.questions[question_id + 1:]]
@@ -137,6 +155,16 @@ class CampaignService:
             return new + self._step(lambda: [self._question_card(chat, campaign, nxt)])
         return new + self._guarded_step(chat, campaign, lambda: self._plan(chat, campaign))
 
+    def retry_review(self, chat: Chat) -> list[Message]:
+        """The Try again button after a brief review failed: reviews the brief that was sent, which is still the
+        last message, so the marketer doesn't have to type "try again" (that would become the brief)."""
+        campaign = self.get(chat)
+        stages.require(campaign.stage, stages.BRIEF, action="review the brief again")
+        last = chat.messages[-1] if chat.messages else None
+        if last is None or last.role != "user":
+            raise UnknownQuestion("There is no brief waiting to be reviewed; paste it in the chat.")
+        return self._guarded_step(chat, campaign, lambda: self._review(chat, campaign, last.content))
+
     def update_plan(self, chat: Chat, assets: list[dict[str, Any]], base: int | None = None) -> Campaign:
         """Changes made on the plan cards: delete, reorder, edit a field. No AI. The cards send the whole list, so
         `base` is the plan version they show: if the plan has moved on since (a chat edit added a card, say),
@@ -152,6 +180,9 @@ class CampaignService:
             if asset.get("id") not in known or asset.get("type") not in ASSET_TYPES:
                 raise BadPlan("Plan cards can be edited, reordered or removed here; add new assets in the chat.")
             checked.append({key: str(asset.get(key, known[asset["id"]].get(key, ""))) for key in PLAN_FIELDS})
+        problem = plan_problem(checked, self._agent(campaign).channels_in_use())
+        if problem:
+            raise BadPlan(problem)
         campaign.plan = {**campaign.plan, "assets": checked}
         campaign.plan_version += 1
         self._research(campaign).relink()  # a deleted card's findings stop counting
@@ -169,7 +200,11 @@ class CampaignService:
                 raise PlanChanged("The plan changed since you last saw it, so it wasn't approved. Look at the latest "
                                   "plan, then approve it.")
             allowed &= Campaign.plan_version == base
+        problem = plan_problem((campaign.plan or {}).get("assets", []), self._agent(campaign).channels_in_use())
+        if problem:
+            raise BadPlan(f"This plan can't be approved: {problem}")
         self._claim_stage(campaign, allowed, stages.APPROVED, approved_at=utc_now())
+        self._expire_open_questions(chat, campaign)
         campaign.assets = [
             Asset(plan_id=card["id"], position=i, type=card["type"], title=card["title"])
             for i, card in enumerate(campaign.plan["assets"])
@@ -243,6 +278,9 @@ class CampaignService:
     def hand_edit(self, chat: Chat, asset_id: int, content: dict[str, Any],
                   base: int | None = None) -> tuple[Asset, list[Message]]:
         asset = self._ready_asset(chat, asset_id)
+        problem = writer.content_problem(asset.type, content)
+        if problem:
+            raise BadContent(f"Not saved: {problem}")
         _, offer = self._work(self.get(chat)).hand_edit(asset, content, base)
         new = []
         if offer:
@@ -286,7 +324,7 @@ class CampaignService:
         agent = self._agent(campaign)
         review = agent.review_brief()
         new = self._memories_used(chat, campaign, remembered)
-        campaign.questions = [{**q, "answer": None} for q in review.questions]
+        campaign.questions = [{**q, "answer": None, "stage": stages.ASKING} for q in review.questions]
         campaign.brief_rules, campaign.assumptions = review.brief_rules, review.assumptions
         new += self._notes(chat, agent)
         for rule in campaign.brief_rules:
@@ -318,7 +356,7 @@ class CampaignService:
         edit = agent.edit_plan(message)
         new = self._notes(chat, agent)
         if edit.ask:
-            campaign.questions = [*campaign.questions, {**edit.ask, "answer": None}]
+            campaign.questions = [*campaign.questions, {**edit.ask, "answer": None, "stage": stages.PLAN_READY}]
             if edit.reply:
                 new.append(self._post(chat, "assistant", "text", edit.reply, call_id=agent.last_call_id))
             return new + [self._question_card(chat, campaign, len(campaign.questions) - 1)]
@@ -374,11 +412,12 @@ class CampaignService:
             return self._remove_assets(chat, campaign, route, reply.call_id)
         if route.action == "ask":
             # The model's own questions keep to four choices; "Which asset?" lists every asset, so none is missing.
-            options = [o for o in route.ask["options"] if o.strip()]
-            options = (options if route.ask.get("every_asset") else options[:4]) or ["All of them"]
+            options = [o.strip() for o in route.ask["options"] if o.strip()]
+            options = at_least_two(options if route.ask.get("every_asset") else options[:4])
             campaign.questions = [*campaign.questions, {
                 "kind": "unclear", "question": route.ask["question"], "why": "", "source_path": "", "quote": "",
                 "options": [{"label": o, "value": o} for o in options], "about": message, "answer": None,
+                "stage": stages.DONE,
             }]
             return [self._question_card(chat, campaign, len(campaign.questions) - 1)]
         new = []
@@ -627,6 +666,16 @@ class CampaignService:
             note = self._post(chat, "assistant", "note", PLAN_CHANGED)
             self._session.commit()
             return [note]
+
+    def _expire_open_questions(self, chat: Chat, campaign: Campaign) -> None:
+        """Questions still open when the plan is approved were about the plan, so they no longer apply; their
+        cards say so."""
+        if not any(not q.get("answer") for q in campaign.questions):
+            return
+        campaign.questions = [q if q.get("answer") else {**q, "expired": True} for q in campaign.questions]
+        for message in chat.messages:
+            if message.kind == "question" and not (message.data or {}).get("answer"):
+                message.data = {**message.data, "expired": True}
 
     def _locked(self, chat: Chat) -> Campaign:
         """The campaign, locked and read again, for a quick change that must not overwrite a newer one. The lock

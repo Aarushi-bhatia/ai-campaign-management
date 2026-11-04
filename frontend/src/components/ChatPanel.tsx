@@ -44,6 +44,9 @@ export function ChatPanel({ chatId, brandId, onChatCreated, onViewPrompt }: Prop
     enabled: chatId !== null,
     refetchInterval: writingNow ? 3000 : false,
   });
+  // After a failed brief review, the brief is still the last message: Try again reviews it, rather than the
+  // words "try again" becoming the brief.
+  const retryReview = useMutation({ mutationFn: () => api.retryReview(chatId!), onSettled: () => refresh(chatId) });
   const undoMemory = useMutation({ mutationFn: (messageId: number) => api.undoRemembered(messageId), onSettled: () => refresh(chatId) });
   const remember = useMutation({ mutationFn: (messageId: number) => api.acceptRemember(chatId!, messageId), onSettled: () => refresh(chatId) });
   const bringBack = useMutation({ mutationFn: (messageId: number) => api.bringBack(chatId!, messageId), onSettled: () => refresh(chatId) });
@@ -122,8 +125,22 @@ export function ChatPanel({ chatId, brandId, onChatCreated, onViewPrompt }: Prop
           )}
           {answeringHere && <Working />}
           {writingNow && <p className="text-sm text-stone-400">Writing… each asset is checked and fixed before it shows as done.</p>}
-          {(sendError || answerError || undoMemory.error) && (
-            <p className="text-sm text-red-600">{(sendError ?? answerError ?? undoMemory.error)!.message}</p>
+          {(sendError || answerError || undoMemory.error || retryReview.error) && (
+            <p className="text-sm text-red-600">
+              {(sendError ?? answerError ?? undoMemory.error ?? retryReview.error)!.message}
+            </p>
+          )}
+          {stage === "brief" && !busy && messages.at(-1)?.role === "user" && (
+            <div className="flex items-center gap-3 text-sm text-stone-600">
+              The brief wasn't reviewed.
+              <button
+                onClick={() => retryReview.mutate()}
+                disabled={retryReview.isPending}
+                className="rounded-full border border-stone-200 bg-white px-4 py-1.5 hover:bg-stone-100 disabled:opacity-40"
+              >
+                {retryReview.isPending ? "Reviewing…" : "Try again"}
+              </button>
+            </div>
           )}
           <div ref={bottomRef} />
         </div>
@@ -163,7 +180,7 @@ function lastOpenQuestion(messages: Message[]): number | null {
     const message = messages[i];
     if (message.kind === "question") {
       const data = message.data as QuestionData;
-      return data.answer ? null : data.id;
+      return data.answer || data.expired ? null : data.id;
     }
   }
   return null;

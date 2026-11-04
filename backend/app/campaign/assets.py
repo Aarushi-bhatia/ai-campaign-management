@@ -432,6 +432,7 @@ class AssetWork:
         old_words, new_words = before.split(), after.split()
         offer = None
         counts = dict(self.campaign.hand_fixes)
+        seen: set[str] = set()
         matcher = difflib.SequenceMatcher(a=old_words, b=new_words, autojunk=False)
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
             if tag != "replace" or i2 - i1 > 3 or j2 - j1 > 3:
@@ -440,6 +441,9 @@ class AssetWork:
             if not old or not new or old.lower() == new.lower():
                 continue
             key = f"{old} → {new}"
+            if key in seen:  # the same swap twice in one save is one hand fix, not two
+                continue
+            seen.add(key)
             counts[key] = counts.get(key, 0) + 1
             elsewhere = self.session.scalar(
                 select(func.coalesce(func.sum(Campaign.hand_fixes[key].as_integer()), 0))

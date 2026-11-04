@@ -12,7 +12,7 @@ from app.campaign.assets import AssetChanged, NothingToUndo
 from app.campaign.models import Asset, Campaign
 from app.campaign.research import UnknownFinding
 from app.campaign.runtime import Runtime
-from app.campaign.service import BadPlan, NoBrand, UnknownAsset, UnknownQuestion
+from app.campaign.service import BadContent, BadPlan, NoBrand, UnknownAsset, UnknownQuestion
 from app.campaign.stages import WrongStage
 from app.chat.models import Chat
 from app.chat.schemas import (
@@ -75,6 +75,8 @@ def _run(action):
         raise HTTPException(400, str(error))
     except (UnknownFinding, UnknownAsset) as error:
         raise HTTPException(404, str(error))
+    except BadContent as error:
+        raise HTTPException(422, str(error))
     except AiCallFailed as failure:
         raise HTTPException(502, f"The AI request failed: {failure}")
 
@@ -110,6 +112,13 @@ def send_message(chat_id: int, body: SendMessage, chats: Chats):
 def answer(chat_id: int, body: AnswerIn, chats: Chats):
     chat = _chat(chats, chat_id)
     return _run(lambda: chats.campaigns.answer(chat, body.question_id, body.answer))
+
+
+@router.post("/{chat_id}/review", response_model=list[MessageOut], status_code=201)
+def retry_review(chat_id: int, chats: Chats):
+    """The Try again button after the brief review failed: reviews the brief already sent."""
+    chat = _chat(chats, chat_id)
+    return _run(lambda: chats.campaigns.retry_review(chat))
 
 
 @router.put("/{chat_id}/plan", response_model=CampaignOut)

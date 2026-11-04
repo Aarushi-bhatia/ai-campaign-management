@@ -32,6 +32,10 @@ _FILLER = {"a", "an", "the", "it", "its", "to", "of", "for", "in", "on", "and", 
            "always", "all", "every", "our", "we", "you", "your", "with"}
 
 
+class MemoryChanged(Exception):
+    """The item was changed after its "Remembered" note, so that note's Undo would reverse the later change."""
+
+
 class MemoryFull(Exception):
     """Core memory is at its limit and every item is pinned, so nothing can make room."""
 HISTORY_IN_PLANNING = 5
@@ -139,12 +143,19 @@ def _answers_to_questions(messages: list[Message]) -> set[int]:
 
 def undo_remembered(session: Session, note: Message) -> None:
     """The Undo on a "Remembered" note: a new item is deleted; a rewritten one gets its old text back. Items that
-    were dropped to make room for it come back as they were (same id, so same place in memory). If memory has
-    filled up again since, MemoryFull, and nothing changes."""
+    were dropped to make room for it come back as they were (same id, so same place in memory), unless memory
+    holds their wording again by now; the chat says which were left out.
+
+    Undo never reverses a later change: when the item was edited, pinned or rewritten after the note, it is
+    refused (MemoryChanged), as it is when the dropped items no longer fit (MemoryFull). Either way nothing
+    changes."""
     data = note.data or {}
     if data.get("undone"):
         return
     item = session.get(MemoryItem, data.get("item_id"))
+    if item is not None and note.created_at is not None and item.updated_at > note.created_at:
+        raise MemoryChanged("This item was changed after it was remembered, so Undo would reverse that change too. "
+                            "Edit or delete it on the Memory page instead.")
     previous, dropped = data.get("previous"), data.get("dropped", [])
     if item is not None and previous:
         item.text, item.kind, item.source_chat_id = previous["text"], previous["kind"], previous["source_chat_id"]
@@ -152,7 +163,13 @@ def undo_remembered(session: Session, note: Message) -> None:
         brand_id = item.brand_id
         session.delete(item)
         session.flush()
-        back = [d for d in dropped if session.get(MemoryItem, d["id"]) is None]
+        held = {normalize(i.text) for i in core(session, brand_id)}
+        gone = [d for d in dropped if session.get(MemoryItem, d["id"]) is None]
+        back = [d for d in gone if normalize(d["text"]) not in held]
+        if len(back) < len(gone) and note.chat_id is not None:
+            listed = "; ".join(f"“{d['text']}”" for d in gone if d not in back)
+            session.add(Message(chat_id=note.chat_id, role="assistant", kind="note",
+                                content=f"Undone. Not brought back, as memory already holds it again: {listed}."))
         if back and len(core(session, brand_id)) + len(back) > CORE_LIMIT:
             session.rollback()
             raise MemoryFull(f"Memory has filled up again since, so the {len(back)} dropped item"

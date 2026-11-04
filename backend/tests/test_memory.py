@@ -380,3 +380,51 @@ def test_writing_a_campaign_record_again_keeps_the_marketers_corrections(client:
     assert len(again) == 1 and again[0]["id"] == record["id"]  # updated in place
     assert again[0]["goal"] == "Book 40 demos"
     assert (again[0]["name"], again[0]["assets"]) == (record["name"], record["assets"])  # the rest is written again
+
+
+def test_undo_is_refused_after_the_item_was_edited_or_pinned(client: TestClient, brand: int):
+    """Undo used to delete the item anyway, along with the marketer's later edit and pin."""
+    note = _send(client, _planned(client), "Never call it a platform.")[-1]
+    item_id = note["data"]["item_id"]
+    client.put(f"/api/memory/{item_id}", json={"text": "Never call Acme a platform or a suite.", "pinned": True})
+
+    refused = client.post(f"/api/memory/notes/{note['id']}/undo")
+
+    assert refused.status_code == 409 and "changed after it was remembered" in refused.json()["detail"]
+    core = client.get(f"/api/brands/{brand}/memory").json()["core"]
+    assert [(i["id"], i["text"], i["pinned"]) for i in core] == [(item_id, "Never call Acme a platform or a suite.", True)]
+
+
+def test_undo_of_a_rewrite_is_refused_after_a_later_hand_edit(client: TestClient, brand: int, fake_ai: FakeTransport,
+                                                             settings: Settings):
+    chat_id = client.post("/api/chats").json()["id"]
+    old = client.post(f"/api/brands/{brand}/memory", json={"text": "Hold the hero for Brand.", "kind": "decision"}).json()
+    with SessionLocal() as session:
+        item = Memory(session, AiService(session, fake_ai, settings)).add(brand, "Use working-room photos for heroes.",
+                                                                         "correction", None, replaces=old["id"])
+        note = remembered_note(item)
+        note.chat_id = chat_id
+        session.add(note)
+        session.commit()
+        note_id = note.id
+    client.put(f"/api/memory/{old['id']}", json={"text": "Use working-room photos for every hero, never stock."})
+
+    assert client.post(f"/api/memory/notes/{note_id}/undo").status_code == 409  # used to bring back the old text
+
+    core = client.get(f"/api/brands/{brand}/memory").json()["core"]
+    assert [i["text"] for i in core] == ["Use working-room photos for every hero, never stock."]
+
+
+def test_undo_does_not_bring_back_wording_memory_holds_again(client: TestClient, brand: int):
+    items = _fill(client, brand, pinned=False)
+    chat_id = _planned(client)
+    note = _send(client, chat_id, "Never call it a platform.")[-1]
+    client.post(f"/api/brands/{brand}/memory", json={"text": items[0]["text"]})  # the dropped wording, added again
+
+    assert client.post(f"/api/memory/notes/{note['id']}/undo").status_code == 204
+
+    texts = [i["text"] for i in client.get(f"/api/brands/{brand}/memory").json()["core"]]
+    assert texts.count(items[0]["text"]) == 1  # was 2
+    assert "Never call Acme a platform." not in texts
+    last = client.get(f"/api/chats/{chat_id}").json()["messages"][-1]
+    assert last["content"].startswith("Undone. Not brought back, as memory already holds it again")

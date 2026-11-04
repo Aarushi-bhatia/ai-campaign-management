@@ -1,6 +1,7 @@
 """Writing, checking and editing assets after approval, through the chat API with a fake AI."""
 
 import json
+from collections.abc import Callable
 
 import pytest
 from fastapi.testclient import TestClient
@@ -897,3 +898,52 @@ def test_a_wide_edit_lists_every_asset_even_when_one_edit_fails(client: TestClie
     assert "Made it shorter" in lines[0] and "couldn't be edited" in lines[1] and "Made it shorter" in lines[2]
     after = _assets(client, chat_id)
     assert [a["version"] - b["version"] for a, b in zip(after, before)] == [1, 0, 1]
+
+
+UNKNOWN_LINK = "https://unknown.example/page"
+
+
+def _ai_check_down(fake_ai: FakeTransport, change: Callable[[AiRequest, dict], None]) -> None:
+    """Every AI check fails, as in an outage; `change` adds a problem the free checks can find to a reply."""
+    def reply(request: AiRequest):
+        if request.output_schema and request.output_schema.name == "asset_check":
+            raise RuntimeError("The AI service is down")
+        answer = brand_brain.reply(request)
+        if request.output_schema and request.output_schema.name.endswith("_asset"):
+            data = json.loads(answer)
+            change(request, data)
+            return json.dumps(data)
+        return answer
+
+    fake_ai._default = reply
+
+
+def test_an_edit_whose_ai_check_fails_still_shows_what_the_free_checks_found(client: TestClient, brand: int,
+                                                                           fake_ai: FakeTransport):
+    """The free checks had run, but their findings were thrown away with the AI check's failure."""
+    chat_id = _written(client)
+
+    def add_link(request, data):
+        if "changed" in request.output_schema.schema["properties"]:
+            data["text"] = f"Short. Details at {UNKNOWN_LINK}"
+
+    _ai_check_down(fake_ai, add_link)
+    client.post(f"/api/chats/{chat_id}/messages", json={"content": "Shorten the second post"})
+
+    warnings = _assets(client, chat_id)[1]["warnings"]
+    assert [w["check"] for w in warnings] == ["citation", "not checked"]  # was only "not checked"
+    assert "The AI check couldn't run" in warnings[-1]["problem"]
+
+
+def test_a_draft_whose_ai_check_fails_still_shows_what_the_free_checks_found(client: TestClient, brand: int,
+                                                                           fake_ai: FakeTransport):
+    def add_link(request, data):
+        if request.output_schema.name == "email_asset" and "Write asset" in request.prompt.task[-1].content:
+            data["sections"][0]["body"] += f" Details at {UNKNOWN_LINK}"
+
+    _ai_check_down(fake_ai, add_link)
+    chat_id = _written(client)
+
+    email = _assets(client, chat_id)[0]
+    assert [w["check"] for w in email["warnings"]] == ["citation", "not checked"]
+    assert _versions(client, chat_id, email["id"])[-1]["warnings"] == email["warnings"]

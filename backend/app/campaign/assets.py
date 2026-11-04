@@ -46,6 +46,15 @@ class EmptyEdit(Exception):
     """A chat edit came back with no text, which would leave the asset with nothing to publish. Not saved."""
 
 
+class AiCheckFailed(AiCallFailed):
+    """The free checks ran but the AI check didn't. Carries what the free checks found, so it isn't lost."""
+
+    def __init__(self, free: list[Problem], error: Exception) -> None:
+        super().__init__(getattr(error, "call_id", None), str(error))
+        self.free, self.error = free, error
+        self.call_ids = [self.call_id] if self.call_id is not None else []
+
+
 class AssetChanged(Exception):
     """The asset got a new version while this change was being made, so the change was not saved."""
 
@@ -114,7 +123,7 @@ class AssetWork:
             log.exception("Checking asset %s failed", asset.id)
             self.session.rollback()
             asset.state, asset.error, asset.fixed = "done", None, []
-            asset.warnings = [not_checked(error)]
+            asset.warnings = unfinished_checks(error)
             self._version(asset).warnings = asset.warnings
             self.session.commit()
             return (f"{writer.TYPE_LABELS[asset.type]} “{asset.title}” written, but its checks couldn't run: {error}. "
@@ -201,8 +210,9 @@ class AssetWork:
         except Exception as error:
             # As when writing: the paid-for edit is kept, marked as not checked, so Check again can finish the job.
             log.exception("Checking the edit of asset %s failed", asset.id)
-            call_ids = [error.call_id] if isinstance(error, AiCallFailed) else []
-            warnings = [not_checked(error)]
+            call_ids = error.call_ids if isinstance(error, AiCheckFailed) else \
+                [error.call_id] if isinstance(error, AiCallFailed) else []
+            warnings = unfinished_checks(error)
         draft = Draft(new, [reply.call_id, *call_ids], warnings=warnings, changed=raw["changed"].strip())
         self._save(asset, "chat edit", draft, note=draft.changed, expected=base)
         return draft
@@ -338,16 +348,21 @@ class AssetWork:
         return blocked_reason(view, self._spec(asset, self._card(asset)), library.rules_for(self.brand)["channels"])
 
     def _all_checks(self, asset: Asset, content: dict[str, Any], facts: str) -> tuple[list[Problem], list[int]]:
+        """The free checks, then the AI check. When only the AI check fails, AiCheckFailed keeps what the free
+        checks found."""
         free = free_checks(asset.type, content, self._check_rules(asset))
         rules = self._channel_rules(asset)
-        found, reply = ai_check(
-            self.ai, brand_name=self.brand.name, summary=self.brand.summary,
-            campaign=writer.campaign_text(self.campaign),
-            asset_label=writer.TYPE_LABELS[asset.type], content=content, facts=facts,
-            research=writer.research_text(approved(self.campaign, asset.plan_id)), rules=rules,
-            memory=core_texts(self.session, self.brand.id),
-            step=f"Check asset {asset.id}", chat_id=self.campaign.chat_id, brand_id=self.brand.id,
-        )
+        try:
+            found, reply = ai_check(
+                self.ai, brand_name=self.brand.name, summary=self.brand.summary,
+                campaign=writer.campaign_text(self.campaign),
+                asset_label=writer.TYPE_LABELS[asset.type], content=content, facts=facts,
+                research=writer.research_text(approved(self.campaign, asset.plan_id)), rules=rules,
+                memory=core_texts(self.session, self.brand.id),
+                step=f"Check asset {asset.id}", chat_id=self.campaign.chat_id, brand_id=self.brand.id,
+            )
+        except Exception as error:
+            raise AiCheckFailed(free, error) from error
         return [*free, *found], [reply.call_id]
 
     def _save(self, asset: Asset, reason: str, draft: Draft, note: str = "", based_on: int | None = None,
@@ -438,8 +453,13 @@ class AssetWork:
         return offer
 
 
-def not_checked(error: Exception) -> dict[str, str]:
-    return {"check": "not checked", "quote": "", "problem": f"The checks couldn't run ({error}). Press Check again."}
+def unfinished_checks(error: Exception) -> list[dict[str, str]]:
+    """The warnings for checks that stopped partway. When only the AI check failed, the free checks' problems are
+    shown as well; "not checked" stays either way, until Check again succeeds."""
+    if isinstance(error, AiCheckFailed):
+        return [*(p.to_dict() for p in error.free),
+                {"check": "not checked", "quote": "", "problem": f"The AI check couldn't run ({error}). Press Check again."}]
+    return [{"check": "not checked", "quote": "", "problem": f"The checks couldn't run ({error}). Press Check again."}]
 
 
 def _bare(words: str) -> str:

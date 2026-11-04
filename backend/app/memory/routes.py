@@ -13,7 +13,7 @@ from app.brand.models import Brand
 from app.chat.models import Message
 from app.db import get_session
 from app.memory.models import CampaignRecord, MemoryItem
-from app.memory.service import KINDS, Memory, MemoryFull, core, history, item_out, undo_remembered
+from app.memory.service import KINDS, Memory, MemoryChanged, MemoryFull, core, history, item_out, undo_remembered
 
 router = APIRouter(prefix="/api", tags=["memory"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -91,8 +91,8 @@ def undo_remembered_note(message_id: int, session: SessionDep):
         raise HTTPException(404, "No such memory note.")
     try:
         undo_remembered(session, note)
-    except MemoryFull as full:
-        raise HTTPException(409, str(full))
+    except (MemoryFull, MemoryChanged) as refused:
+        raise HTTPException(409, str(refused))
 
 
 @router.delete("/memory/{item_id}", status_code=204)

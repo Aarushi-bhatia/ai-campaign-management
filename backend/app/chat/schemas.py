@@ -55,6 +55,8 @@ class AnswerIn(BaseModel):
 
 class PlanIn(BaseModel):
     assets: list[dict[str, Any]]
+    base_version: int | None = None
+    """The plan version the cards show. When the plan has moved on since, the change isn't saved."""
 
 
 class AssetVersionOut(BaseModel):

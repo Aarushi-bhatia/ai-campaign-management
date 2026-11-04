@@ -50,7 +50,7 @@ export function AssetView({ chatId, asset, brandName, onViewPrompt }: Props) {
     onError: refresh,
   });
   const undo = useMutation({ mutationFn: () => api.undoAsset(chatId, asset.id, asset.version), onSettled: refresh });
-  const check = useMutation({ mutationFn: () => api.checkAgain(chatId, asset.id), onSuccess: refresh });
+  const check = useMutation({ mutationFn: () => api.checkAgain(chatId, asset.id), onSettled: refresh });
   const retry = useMutation({ mutationFn: () => api.writeAgain(chatId), onSuccess: refresh });
   const restore = useMutation({
     mutationFn: (number: number) => api.restoreVersion(chatId, asset.id, number, asset.version),

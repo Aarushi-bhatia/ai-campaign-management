@@ -29,8 +29,13 @@ export function PlanPanel({ chatId, campaign }: Props) {
     queryClient.invalidateQueries({ queryKey: ["calls", chatId] });
   };
 
-  const save = useMutation({ mutationFn: (assets: PlanAsset[]) => api.updatePlan(chatId, assets), onSuccess: refresh });
-  const approve = useMutation({ mutationFn: () => api.approvePlan(chatId), onSettled: refresh });
+  // Both send the plan version shown, so a plan that changed meanwhile isn't overwritten or approved unseen;
+  // a refused save refreshes the cards to the latest plan.
+  const save = useMutation({
+    mutationFn: (assets: PlanAsset[]) => api.updatePlan(chatId, assets, campaign.plan_version),
+    onSettled: refresh,
+  });
+  const approve = useMutation({ mutationFn: () => api.approvePlan(chatId, campaign.plan_version), onSettled: refresh });
   const remove = useMutation({ mutationFn: (id: string) => api.removeFinding(chatId, id), onSuccess: refresh });
   const better = useMutation({ mutationFn: (id: string) => api.betterSource(chatId, id), onSettled: refresh });
   const bringBack = useMutation({ mutationFn: (id: string) => api.bringBackFinding(chatId, id), onSuccess: refresh });

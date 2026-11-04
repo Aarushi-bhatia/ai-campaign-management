@@ -116,13 +116,14 @@ def answer(chat_id: int, body: AnswerIn, chats: Chats):
 def update_plan(chat_id: int, body: PlanIn, chats: Chats):
     """Direct edits on the plan cards: delete, reorder, change a field."""
     chat = _chat(chats, chat_id)
-    return _run(lambda: chats.campaigns.update_plan(chat, body.assets))
+    return _run(lambda: chats.campaigns.update_plan(chat, body.assets, body.base_version))
 
 
 @router.post("/{chat_id}/approve", response_model=list[MessageOut])
-def approve(chat_id: int, chats: Chats):
+def approve(chat_id: int, chats: Chats, base_version: int | None = None):
+    """`base_version` is the plan version shown; a plan that changed since isn't approved unseen."""
     chat = _chat(chats, chat_id)
-    return _run(lambda: chats.campaigns.approve(chat))
+    return _run(lambda: chats.campaigns.approve(chat, base_version))
 
 
 @router.post("/{chat_id}/write", response_model=CampaignOut)

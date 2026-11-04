@@ -39,9 +39,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ question_id: questionId, answer }),
     }),
-  updatePlan: (chatId: number, assets: PlanAsset[]) =>
-    request<Campaign>(`/api/chats/${chatId}/plan`, { method: "PUT", body: JSON.stringify({ assets }) }),
-  approvePlan: (chatId: number) => request<Message[]>(`/api/chats/${chatId}/approve`, { method: "POST" }),
+  updatePlan: (chatId: number, assets: PlanAsset[], baseVersion: number) =>
+    request<Campaign>(`/api/chats/${chatId}/plan`, {
+      method: "PUT",
+      body: JSON.stringify({ assets, base_version: baseVersion }),
+    }),
+  approvePlan: (chatId: number, baseVersion: number) =>
+    request<Message[]>(`/api/chats/${chatId}/approve?base_version=${baseVersion}`, { method: "POST" }),
   writeAgain: (chatId: number) => request<Campaign>(`/api/chats/${chatId}/write`, { method: "POST" }),
   removeFinding: (chatId: number, findingId: string) =>
     request<Campaign>(`/api/chats/${chatId}/research/${findingId}`, { method: "DELETE" }),

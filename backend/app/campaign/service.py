@@ -4,7 +4,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from sqlalchemy import exists, func, select, update
+from sqlalchemy import exists, func, inspect, select, update
 from sqlalchemy.orm import Session
 
 from app.ai.models import AiCall
@@ -42,6 +42,14 @@ class BadPlan(ValueError):
 
 class UnknownAsset(ValueError):
     pass
+
+
+class PlanChanged(stages.WrongStage):
+    """The plan or its research changed since this was started (or since the user last saw it)."""
+
+
+PLAN_CHANGED = ("The plan changed while I was working on this: it was approved, or changed somewhere else. So I "
+                "left it as it is, and nothing from this step was kept. The plan shown now is the latest.")
 
 
 def _usd(amount: float) -> str:
@@ -83,15 +91,15 @@ class CampaignService:
         self._post(chat, "user", "text", text)
         self._session.commit()  # the message is kept even when the step after it fails
         if campaign.stage == stages.BRIEF:
-            campaign.brief = text
-            return self._step(lambda: self._review(chat, campaign))
+            return self._guarded_step(chat, campaign, lambda: self._review(chat, campaign, text))
         if campaign.stage == stages.ASKING:
             if self._next_open(campaign) is None:
                 # Every question is answered but planning didn't finish (it failed): plan again.
-                return self._step(lambda: self._plan(chat, campaign))
+                return self._guarded_step(chat, campaign, lambda: self._plan(chat, campaign))
             return self.answer(chat, self._current_question(campaign), text, typed=True)
         if campaign.stage == stages.PLAN_READY:
-            return self._step(lambda: self._edit(chat, campaign, text)) + self._step(lambda: self._remember(chat, campaign))
+            return (self._guarded_step(chat, campaign, lambda: self._edit(chat, campaign, text))
+                    + self._step(lambda: self._remember(chat, campaign)))
         if campaign.stage == stages.DONE:
             return (self._step(lambda: self._edit_assets(chat, campaign, text))
                     + self._step(lambda: self._remember(chat, campaign)))
@@ -101,6 +109,9 @@ class CampaignService:
     def answer(self, chat: Chat, question_id: int, answer: str, typed: bool = False) -> list[Message]:
         """Records an answer to a question card, then asks the next question or moves on."""
         campaign = self.get(chat)
+        # Locked, then read again, until the answer is saved: a second answer to the same card, sent at the same
+        # moment, waits here and then finds the card answered, so it can't plan a second time.
+        self._session.refresh(campaign, with_for_update=True)
         stages.require(campaign.stage, stages.ASKING, stages.PLAN_READY, stages.DONE, action="answer a question")
         if not 0 <= question_id < len(campaign.questions) or campaign.questions[question_id].get("answer"):
             raise UnknownQuestion("That question isn't open.")
@@ -116,19 +127,25 @@ class CampaignService:
             new += self._settle_conflict(chat, campaign, question["conflict_target"], option["value"])
         self._session.commit()  # the answer is kept even when the step after it fails
         if campaign.stage == stages.PLAN_READY:
-            return new + self._step(lambda: self._edit(chat, campaign, f"{question['question']} {question['answer']}"))
+            return new + self._guarded_step(chat, campaign,
+                                            lambda: self._edit(chat, campaign, f"{question['question']} {question['answer']}"))
         if campaign.stage == stages.DONE:
             return new + self._step(lambda: self._edit_assets(
                 chat, campaign, f"{question.get('about', '')} {question['question']} {question['answer']}".strip()))
         nxt = self._next_open(campaign)
         if nxt is not None:
             return new + self._step(lambda: [self._question_card(chat, campaign, nxt)])
-        return new + self._step(lambda: self._plan(chat, campaign))
+        return new + self._guarded_step(chat, campaign, lambda: self._plan(chat, campaign))
 
-    def update_plan(self, chat: Chat, assets: list[dict[str, Any]]) -> Campaign:
-        """Changes made on the plan cards: delete, reorder, edit a field. No AI."""
-        campaign = self.get(chat)
+    def update_plan(self, chat: Chat, assets: list[dict[str, Any]], base: int | None = None) -> Campaign:
+        """Changes made on the plan cards: delete, reorder, edit a field. No AI. The cards send the whole list, so
+        `base` is the plan version they show: if the plan has moved on since (a chat edit added a card, say),
+        saving would undo that, so nothing is saved."""
+        campaign = self._locked(chat)
         stages.require(campaign.stage, stages.PLAN_READY, action="change the plan")
+        if base is not None and base != campaign.plan_version:
+            raise PlanChanged("The plan changed since these cards were shown (by a chat edit, say), so this card change "
+                              "wasn't saved. The latest plan is shown now; make the change again.")
         known = {asset["id"]: asset for asset in campaign.plan["assets"]}
         checked = []
         for asset in assets:
@@ -141,11 +158,18 @@ class CampaignService:
         self._session.commit()
         return campaign
 
-    def approve(self, chat: Chat) -> list[Message]:
-        """Locks the plan and its research, then starts writing every asset in the background."""
+    def approve(self, chat: Chat, base: int | None = None) -> list[Message]:
+        """Locks the plan and its research, then starts writing every asset in the background. `base` is the plan
+        version the marketer saw: a plan or research that changed since then isn't approved unseen."""
         campaign = self.get(chat)
         stages.require(campaign.stage, stages.PLAN_READY, action="approve the plan")
-        self._claim_stage(campaign, Campaign.stage == stages.PLAN_READY, stages.APPROVED, approved_at=utc_now())
+        allowed = Campaign.stage == stages.PLAN_READY
+        if base is not None:
+            if base != campaign.plan_version:
+                raise PlanChanged("The plan changed since you last saw it, so it wasn't approved. Look at the latest "
+                                  "plan, then approve it.")
+            allowed &= Campaign.plan_version == base
+        self._claim_stage(campaign, allowed, stages.APPROVED, approved_at=utc_now())
         campaign.assets = [
             Asset(plan_id=card["id"], position=i, type=card["type"], title=card["title"])
             for i, card in enumerate(campaign.plan["assets"])
@@ -179,9 +203,10 @@ class CampaignService:
     # Research on the plan
 
     def remove_finding(self, chat: Chat, finding_id: str) -> Campaign:
-        campaign = self.get(chat)
+        campaign = self._locked(chat)
         stages.require(campaign.stage, stages.PLAN_READY, action="change the research")
         self._research(campaign).remove(finding_id)
+        campaign.plan_version += 1
         self._session.commit()
         return campaign
 
@@ -189,20 +214,23 @@ class CampaignService:
         """The Try again button on a plan card whose search failed: runs the plan's searches that haven't run."""
         campaign = self.get(chat)
         stages.require(campaign.stage, stages.PLAN_READY, action="search again")
-        return self._step(lambda: [self._post(chat, "assistant", "note", line)
-                                   for line in self._research(campaign).for_plan() or ["Nothing left to search for."]])
+        return self._guarded_step(chat, campaign, lambda: [
+            self._post(chat, "assistant", "note", line)
+            for line in self._research(campaign).for_plan() or ["Nothing left to search for."]])
 
     def bring_back_finding(self, chat: Chat, finding_id: str) -> Campaign:
-        campaign = self.get(chat)
+        campaign = self._locked(chat)
         stages.require(campaign.stage, stages.PLAN_READY, action="change the research")
         self._research(campaign).bring_back(finding_id)
+        campaign.plan_version += 1
         self._session.commit()
         return campaign
 
     def better_source(self, chat: Chat, finding_id: str) -> list[Message]:
         campaign = self.get(chat)
         stages.require(campaign.stage, stages.PLAN_READY, action="change the research")
-        return self._step(lambda: [self._post(chat, "assistant", "note", self._research(campaign).better_source(finding_id))])
+        return self._guarded_step(chat, campaign, lambda: [
+            self._post(chat, "assistant", "note", self._research(campaign).better_source(finding_id))])
 
     # Assets
 
@@ -252,7 +280,8 @@ class CampaignService:
 
     # Steps
 
-    def _review(self, chat: Chat, campaign: Campaign) -> list[Message]:
+    def _review(self, chat: Chat, campaign: Campaign, brief: str) -> list[Message]:
+        campaign.brief = brief
         remembered = core(self._session, campaign.brand_id)
         agent = self._agent(campaign)
         review = agent.review_brief()
@@ -561,6 +590,41 @@ class CampaignService:
             new = run()
         self._session.commit()
         return new
+
+    def _guarded_step(self, chat: Chat, campaign: Campaign, run: Callable[[], list[Message]]) -> list[Message]:
+        """A step that can change the plan or its research. Its AI calls and web searches take a while, and the
+        campaign can move on meanwhile (approved, or its plan or research changed from another tab or button).
+        So it is saved only if the campaign is still at the stage and plan version it started from; otherwise
+        nothing from it is kept, and the chat says so. Saving it moves the plan version on when it changed the
+        plan or research. Such a step must not commit on the way, or it would find its own change."""
+        stage, version = campaign.stage, campaign.plan_version
+
+        def checked() -> list[Message]:
+            new = run()
+            now = self._session.execute(select(Campaign.stage, Campaign.plan_version)
+                                        .where(Campaign.id == campaign.id).with_for_update()).one()
+            if tuple(now) != (stage, version):
+                raise PlanChanged(PLAN_CHANGED)
+            state = inspect(campaign)
+            if campaign.plan_version == version and any(state.attrs[name].history.has_changes()
+                                                         for name in ("plan", "research", "searches")):
+                campaign.plan_version += 1
+            return new
+
+        try:
+            return self._step(checked)
+        except PlanChanged:
+            self._session.rollback()
+            note = self._post(chat, "assistant", "note", PLAN_CHANGED)
+            self._session.commit()
+            return [note]
+
+    def _locked(self, chat: Chat) -> Campaign:
+        """The campaign, locked and read again, for a quick change that must not overwrite a newer one. The lock
+        lasts until the change is saved."""
+        campaign = self.get(chat)
+        self._session.refresh(campaign, with_for_update=True)
+        return campaign
 
     def _post(self, chat: Chat, role: str, kind: str, content: str, data: dict | None = None,
               call_id: int | None = None) -> Message:

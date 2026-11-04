@@ -154,9 +154,16 @@ class AssetWork:
         return Draft(fixed, [*call_ids, reply.call_id], changes, [p.to_dict() for p in [*still, *ai_left]], found=found)
 
     def check_again(self, asset: Asset) -> Draft:
-        """The full check on demand, with no fix. Its warnings replace the old ones."""
+        """The full check on demand, with no fix. Its warnings replace the old ones, but only while the asset is
+        still at the version that was checked: a hand edit saved meanwhile keeps its own warnings."""
+        checked_version = asset.version
         _, facts = self._lookups(asset, self._card(asset), record=False)
         problems, call_ids = self._all_checks(asset, asset.content or {}, facts)
+        current = self.session.scalar(select(Asset.version).where(Asset.id == asset.id).with_for_update())
+        if current != checked_version:
+            self.session.rollback()
+            raise AssetChanged(f"“{asset.title}” changed while it was being checked (it is now at version {current}), "
+                               "so these results weren't kept. Press Check again on the latest version.")
         draft = Draft(asset.content or {}, call_ids, warnings=[p.to_dict() for p in problems])
         self._set_checks(asset, draft)
         self.session.commit()

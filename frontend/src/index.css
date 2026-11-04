@@ -1,0 +1,113 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+/*
+ * The app's look: a deep purple sidebar, lavender accents, off-white surfaces and crisp cool greys.
+ * The grey scale is remapped here, so every "stone" class in the components picks up these values.
+ */
+@theme {
+  --font-sans: "Inter", "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --color-stone-50: #f8fafc;
+  --color-stone-100: #f1f5f9;
+  --color-stone-200: #e2e8f0;
+  --color-stone-300: #cbd5e1;
+  --color-stone-400: #94a3b8;
+  --color-stone-500: #64748b;
+  --color-stone-600: #475569;
+  --color-stone-700: #334155;
+  --color-stone-800: #1e293b;
+  --color-stone-900: #0f172a;
+
+  --color-brand: #4c1d95;
+  --color-brand-soft: #ede9fe;
+
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.06);
+  --shadow-md: 0 4px 12px -2px rgb(15 23 42 / 0.08), 0 2px 4px -2px rgb(15 23 42 / 0.05);
+  --shadow-lg: 0 12px 28px -6px rgb(15 23 42 / 0.14), 0 4px 10px -4px rgb(15 23 42 / 0.08);
+}
+
+/* In the base layer, so classes on an element still win. */
+@layer base {
+  /* A border with no colour of its own is the light grey, never the text colour. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: rgb(226 232 240 / 0.7);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-stone-50 text-stone-900 antialiased;
+    font-feature-settings: "cv11", "ss01";
+    line-height: 1.5;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.01em;
+  }
+
+  /* Smooth hover and focus everywhere. */
+  button,
+  a,
+  input,
+  textarea,
+  select,
+  article {
+    transition:
+      background-color 150ms ease,
+      color 150ms ease,
+      border-color 150ms ease,
+      box-shadow 150ms ease,
+      opacity 150ms ease;
+  }
+
+  input,
+  textarea,
+  select {
+    @apply rounded-lg border-stone-200 bg-white;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+    border-color: #a78bfa;
+    box-shadow: 0 0 0 3px var(--color-brand-soft);
+  }
+
+  /* Tailwind 4 leaves buttons with the arrow cursor; everything clickable gets the hand. */
+  button,
+  [role="button"],
+  a[href],
+  select,
+  summary,
+  label:has(input[type="checkbox"], input[type="radio"]),
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"],
+  ::file-selector-button {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  select:disabled,
+  input:disabled {
+    cursor: not-allowed;
+  }
+
+  /* Thin, quiet scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+}

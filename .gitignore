@@ -1,0 +1,31 @@
+# Secrets: only the example env file is kept
+.env
+.env.*
+!.env.example
+
+# User and run data (brand uploads, AI call logs, briefs, run results, databases)
+data/
+.data/
+/brands/*
+!/brands/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+
+# Generated files
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+*.bak
+docs/*.diff
+
+# Local tool and OS files
+.scratch/
+.claude/
+.DS_Store

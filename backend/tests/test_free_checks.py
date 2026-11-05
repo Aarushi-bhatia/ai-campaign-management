@@ -35,6 +35,12 @@ def test_a_banned_word_is_reported_once_per_asset():
     assert len(_checks(_post("leverage, leverage, leverage"), banned=BANNED)) == 1
 
 
+def test_a_banned_line_is_found_without_its_full_stop():
+    lines = [{"term": "Sleep through the night.", "instead": ""}]
+    for text in ("Sleep through the night", "Sleep through the night.", "“Sleep through the night!”"):
+        assert _checks(_post(f"Wickhold. {text} Book a demo."), banned=lines) == [("banned word", "Sleep through the night")]
+
+
 def test_curly_quotes_and_dashes_dont_hide_a_word():
     assert _checks(_post("It’s best–in–class."), banned=BANNED) == [("banned word", "best-in-class")]
 

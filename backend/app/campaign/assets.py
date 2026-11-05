@@ -360,7 +360,7 @@ class AssetWork:
                 campaign=writer.campaign_text(self.campaign),
                 asset_label=writer.TYPE_LABELS[asset.type], content=content, facts=facts,
                 research=writer.research_text(approved(self.campaign, asset.plan_id)), rules=rules,
-                memory=core_texts(self.session, self.brand.id),
+                memory=core_texts(self.session, self.brand.id), image=asset.image,
                 step=f"Check asset {asset.id}", chat_id=self.campaign.chat_id, brand_id=self.brand.id,
             )
         except Exception as error:
@@ -374,13 +374,13 @@ class AssetWork:
         current = self.session.scalar(select(Asset.version).where(Asset.id == asset.id).with_for_update())
         if expected is not None and current != expected:
             self.session.rollback()
-            raise AssetChanged(f"“{asset.title}” changed while this was being done (it is now at version {current}), "
-                               "so nothing was saved. Look at the latest version and try again.")
+            raise AssetChanged(f"Someone changed “{asset.title}” (in another tab or in the chat), so your change wasn't "
+                               f"saved. It's now at version {current}. Look at the latest version and make your change again.")
         cost = self.session.scalar(select(func.coalesce(func.sum(AiCall.cost_usd), 0.0))
                                    .where(AiCall.id.in_(draft.call_ids))) if draft.call_ids else 0.0
         latest = self.session.scalar(select(func.max(AssetVersion.number)).where(AssetVersion.asset_id == asset.id))
         number = (latest or 0) + 1
-        version = AssetVersion(number=number, reason=reason, note=note, content=draft.content, image=asset.image,
+        version = AssetVersion(number=number, reason=reason, note=note, content=draft.content, image=None,
                                warnings=draft.warnings, call_ids=draft.call_ids, cost_usd=cost, based_on=based_on)
         asset.versions.append(version)
         asset.content, asset.version = draft.content, number
@@ -457,6 +457,25 @@ class AssetWork:
         self.campaign.hand_fixes = counts
         self.session.commit()
         return offer
+
+
+def text_source(session: Session, asset: Asset) -> tuple[int | None, bool]:
+    """The AI call that wrote the text of the asset's current version, for its "View prompt", and whether that
+    text was edited by hand since. The call is the version's write, edit or fix (never a check); a version made
+    by hand, undo or restore has no call of its own, so the one it came from is used."""
+    by_number = {v.number: v for v in asset.versions}
+    number, hand_edited, seen = asset.version, False, set()
+    while number in by_number and number not in seen:
+        seen.add(number)
+        version = by_number[number]
+        if version.call_ids:
+            steps = dict(session.execute(select(AiCall.id, AiCall.step).where(AiCall.id.in_(version.call_ids))).all())
+            makers = [i for i in version.call_ids if not steps.get(i, "").startswith("Check asset")]
+            if makers:
+                return max(makers), hand_edited
+        hand_edited = hand_edited or version.reason == "hand edit"
+        number = version.based_on or number - 1
+    return None, hand_edited
 
 
 def unfinished_checks(error: Exception) -> list[dict[str, str]]:

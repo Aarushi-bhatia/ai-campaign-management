@@ -1,10 +1,11 @@
 import { useState } from "react";
 import type { QuestionData } from "../../api/types";
+import { plainQuote } from "../../format";
 
 const KIND_LABELS: Record<QuestionData["kind"], string> = {
   missing: "Missing from the brief",
   unclear: "Needs a choice",
-  clash: "The brief clashes with the brand",
+  clash: "Your brief goes against a brand rule",
   conflict: "The brand's documents disagree",
 };
 
@@ -30,7 +31,7 @@ export function QuestionCard({ question, open, busy, onAnswer }: Props) {
       {question.why && <p className="mt-1.5 text-stone-600">{question.why}</p>}
       {question.quote && (
         <blockquote className="mt-3 border-l-2 border-amber-300 pl-3 text-stone-700">
-          “{question.quote}”
+          “{plainQuote(question.quote)}”
           <span className="mt-0.5 block text-xs text-stone-400">{question.source_path}</span>
         </blockquote>
       )}

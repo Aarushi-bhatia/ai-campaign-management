@@ -87,6 +87,8 @@ export type Asset = {
   warnings: Warning[];
   version: number;
   call_id: number | null;
+  prompt_call_id: number | null;
+  hand_edited: boolean;
   error: string | null;
   draft_for: string;
 };

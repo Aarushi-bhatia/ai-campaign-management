@@ -100,7 +100,11 @@ export function AssetView({ chatId, asset, brandName, onViewPrompt }: Props) {
                 {copied ? "Copied" : "Copy"}
               </Button>
               <Button onClick={() => check.mutate()} disabled={check.isPending}>{check.isPending ? "Checking…" : "Check again"}</Button>
-              {asset.call_id && <Button onClick={() => onViewPrompt(asset.call_id!)}>View prompt</Button>}
+              {asset.prompt_call_id ? (
+                <Button onClick={() => onViewPrompt(asset.prompt_call_id!)}>
+                  {asset.hand_edited ? "View prompt (before your hand edit)" : "View prompt"}
+                </Button>
+              ) : asset.hand_edited && <span className="self-center text-xs text-stone-400">Hand edit, no AI call</span>}
             </>
           )}
         </div>

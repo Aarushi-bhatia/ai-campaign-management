@@ -203,7 +203,7 @@ def test_saving_a_hand_edit_started_before_a_newer_version_is_refused(client: Te
     stale_restore = client.post(f"{url}/versions/{linkedin['version']}/restore?base_version={linkedin['version']}")
 
     assert stale_save.status_code == stale_undo.status_code == stale_restore.status_code == 409
-    assert "changed while this was being done" in stale_save.json()["detail"]
+    assert "so your change wasn't saved. It's now at version" in stale_save.json()["detail"]
     assert _assets(client, chat_id)[1]["content"]["text"] == "Short."  # the chat edit was kept
 
 

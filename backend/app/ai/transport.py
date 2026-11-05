@@ -114,8 +114,10 @@ class AiTransport(Protocol):
     def embed(self, request: EmbedRequest) -> EmbedResult: ...
 
 
-REQUEST_TIMEOUT_SECONDS = 300
-"""A reply that takes longer than this has hung; it fails and is logged instead of blocking the chat."""
+REQUEST_TIMEOUT_SECONDS = 120
+"""A reply that takes longer than this has hung, and the request is tried again (twice at most). The slowest
+real replies take about 80 seconds (brand facts), while a hung request can wait minutes and then work at
+once on a retry."""
 
 
 class OpenAiTransport:

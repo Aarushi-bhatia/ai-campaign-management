@@ -230,18 +230,19 @@ RULE_PHRASES = {
 }
 
 
+COUNT_WORDS = {2: "two", 3: "three", 4: "four", 5: "five"}
+
+
 def _note(conflict: Conflict, winner: str, losers: list[str]) -> str:
-    """For example: On product naming, I'm following naming.md rather than old-guide.md, because it is newer."""
+    """For example: Product naming: two brand documents disagree. I used naming.md, because it is newer."""
     many = len(losers) > 1
     reason = RULE_PHRASES.get(conflict.rule, "")
     reason = reason.format(other="the others" if many else "the other", **{"is": "are" if many else "is"}) if reason \
         else conflict.reason.strip().rstrip(".") or "it is the more reliable source"
-    return (f"On {conflict.topic or 'this point'}, I'm following {_file_name(winner)} rather than "
-            f"{_and_list([_file_name(p) for p in losers])}, because {reason}.")
-
-
-def _and_list(items: list[str]) -> str:
-    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+    topic = conflict.topic or "this point"
+    count = len(losers) + 1
+    return (f"{topic[0].upper()}{topic[1:]}: {COUNT_WORDS.get(count, str(count))} brand documents disagree. "
+            f"I used {_file_name(winner)}, because {reason}.")
 
 
 def _file_name(path: str) -> str:

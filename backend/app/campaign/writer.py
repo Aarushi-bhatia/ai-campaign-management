@@ -66,6 +66,9 @@ you use in sources, and cite nothing else. On product facts, prices and guidelin
 always beat the web.
 - {image}
 - Write for the audience on the card, in the brand's voice.
+- Every field is published exactly as written. Never put notes for the team, design or production \
+instructions, or explanations of what to do inside the copy. Leave anything the team must still supply \
+as a short blank in square brackets, such as [demo page URL].
 - When the card has draft_for, this is only an optional draft for that person to post themselves: write it \
 in their voice, and never present it as approved, scheduled or coming from the brand's own account.
 
@@ -116,6 +119,9 @@ Current asset:
 
 Keep to the channel rules and facts below and the approved sources, exactly as for the first draft; \
 cite nothing new. Return the whole asset. In changed, say what you changed in one short line.
+
+If the {label} already does what was asked (for example it is already shorter than the length asked for), \
+return it exactly as it is, with no other change, and say in changed why nothing needed changing.
 
 === CHANNEL RULES ===
 {rules}

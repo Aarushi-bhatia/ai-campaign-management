@@ -1,14 +1,14 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.ai.deps import get_ai_service, get_ai_transport
 from app.ai.service import AiCallFailed, AiService
 from app.ai.transport import AiTransport
 from app.brand.views import file_url
 from app.campaign import costs
-from app.campaign.assets import AssetChanged, NothingToUndo
+from app.campaign.assets import AssetChanged, NothingToUndo, text_source
 from app.campaign.models import Asset, Campaign
 from app.campaign.research import UnknownFinding
 from app.campaign.runtime import Runtime
@@ -171,6 +171,7 @@ def better_source(chat_id: int, finding_id: str, chats: Chats):
 
 def _asset_out(asset: Asset, campaign: Campaign) -> AssetOut:
     out = AssetOut.model_validate(asset)
+    out.prompt_call_id, out.hand_edited = text_source(object_session(asset), asset)
     if asset.image and asset.image.get("path"):
         out.image_url = file_url(campaign.brand_id, asset.image["path"])
     cards = [*(campaign.plan or {}).get("assets", []), *(campaign.plan or {}).get("removed", [])]

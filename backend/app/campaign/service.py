@@ -173,8 +173,8 @@ class CampaignService:
         campaign = self._locked(chat)
         stages.require(campaign.stage, stages.PLAN_READY, action="change the plan")
         if base is not None and base != campaign.plan_version:
-            raise PlanChanged("The plan changed since these cards were shown (by a chat edit, say), so this card change "
-                              "wasn't saved. The latest plan is shown now; make the change again.")
+            raise PlanChanged("Someone changed the plan (in another tab or in the chat), so your change wasn't saved. "
+                              "You're now seeing the latest plan. Make your change again.")
         known = {asset["id"]: asset for asset in campaign.plan["assets"]}
         checked = []
         for asset in assets:
@@ -332,7 +332,7 @@ class CampaignService:
         campaign.brief_rules, campaign.assumptions = review.brief_rules, review.assumptions
         new += self._notes(chat, agent)
         for rule in campaign.brief_rules:
-            new.append(self._post(chat, "assistant", "note", f"For this campaign only, the brief overrides the brand: {rule}"))
+            new.append(self._post(chat, "assistant", "note", f"Your brief changes a brand rule, for this campaign only: {rule}"))
         if campaign.questions:
             campaign.stage = stages.ASKING
             count = len(campaign.questions)
@@ -522,9 +522,10 @@ class CampaignService:
             asset.state = "removed"
         self._sync_plan(campaign)
         lines = "\n".join(f"- {writer.TYPE_LABELS[a.type]} “{a.title}”" for a in removing)
-        return [self._post(chat, "assistant", "removed",
-                           f"{route.reply or 'Removed.'}\n{lines}\nThey are hidden, not deleted: press Undo to bring "
-                           "them back.", {"asset_ids": [a.id for a in removing]}, call_id=call_id)]
+        hidden = ("It is hidden, not deleted: press Undo to bring it back." if len(removing) == 1
+                  else "They are hidden, not deleted: press Undo to bring them back.")
+        return [self._post(chat, "assistant", "removed", f"{route.reply or 'Removed.'}\n{lines}\n{hidden}",
+                           {"asset_ids": [a.id for a in removing]}, call_id=call_id)]
 
     def bring_back(self, chat: Chat, message_id: int) -> list[Message]:
         """Undoes a removal: the assets come back as they were, at their old place in the plan."""

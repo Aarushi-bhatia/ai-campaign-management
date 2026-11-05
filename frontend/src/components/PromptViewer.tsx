@@ -44,7 +44,7 @@ export function PromptViewer({ callId, onClose }: Props) {
         </header>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">
           <Section title="Request options">
-            <pre className="text-xs">{JSON.stringify(options, null, 2)}</pre>
+            <pre className="whitespace-pre-wrap break-words text-xs">{JSON.stringify(options, null, 2)}</pre>
           </Section>
           {input.map((item, index) => {
             const { title, text } = describe(item, index);
@@ -72,7 +72,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-type Part = { type?: string; text?: string; image_url?: string; prompt_cache_breakpoint?: unknown };
+type Part = { type?: string; text?: string; image_url?: string; detail?: string; prompt_cache_breakpoint?: unknown };
 type InputItem = string | {
   role?: string;
   content?: string | Part[];
@@ -80,6 +80,8 @@ type InputItem = string | {
   name?: string;
   arguments?: string;
   output?: string;
+  call_id?: string;
+  summary?: { text?: string }[];
 };
 
 /** One item of the request as readable text. A message's text can be a plain string or a list of parts;
@@ -87,12 +89,17 @@ type InputItem = string | {
 function describe(item: InputItem, index: number): { title: string; text: string } {
   const number = index + 1;
   if (typeof item === "string") return { title: `Text ${number}`, text: item };
-  if (item.type === "function_call") return { title: `Tool call ${number}: ${item.name}`, text: item.arguments ?? "" };
-  if (item.type === "function_call_output") return { title: `Tool result ${number}`, text: item.output ?? "" };
+  if (item.type === "function_call") return { title: `Tool call ${number}: ${item.name} · ${item.call_id}`, text: item.arguments ?? "" };
+  if (item.type === "function_call_output") return { title: `Tool result ${number} · for ${item.call_id}`, text: item.output ?? "" };
+  if (item.type === "reasoning") {
+    // The model's own reasoning from an earlier round, sent back so it can continue. OpenAI encrypts it.
+    const summary = (item.summary ?? []).map((part) => part.text ?? "").filter(Boolean).join("\n\n");
+    return { title: `Reasoning ${number} (from an earlier round)`, text: summary || "(Encrypted by OpenAI, so it can't be shown. It was sent back as it came.)" };
+  }
   const content = item.content;
   if (typeof content === "string") return { title: `Message ${number}: ${item.role}`, text: content };
   const parts = content ?? [];
   const cached = parts.some((part) => part.prompt_cache_breakpoint);
-  const text = parts.map((part) => part.text ?? (part.image_url ? `[${part.image_url}]` : "")).join("\n\n");
+  const text = parts.map((part) => part.text ?? (part.image_url ? `[${part.image_url}${part.detail ? `, detail: ${part.detail}` : ""}]` : "")).join("\n\n");
   return { title: `Message ${number}: ${item.role}${cached ? " · cache point after this" : ""}`, text };
 }

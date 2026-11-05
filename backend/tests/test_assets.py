@@ -225,6 +225,35 @@ def test_assets_written_at_the_same_time_get_different_images(client: TestClient
         assert session.scalar(select(func.count()).select_from(AiCall).where(AiCall.step.like("Image choice asset %"))) == 3
 
 
+def test_the_ai_check_is_told_the_asset_has_an_image(client: TestClient, brand: int, fake_ai: FakeTransport,
+                                                    monkeypatch: pytest.MonkeyPatch):
+    """It used to see only the text, so it reported "no image is specified" and the fix "added" one in words."""
+    monkeypatch.setattr(assets_module.library, "pick", lambda session, ai, brand, spec, chat_id=None, step=None:
+                        PickResult(choices=[Choice("photos/desk.jpg", "Fits.", "An engineer at a desk.")], call_id=None))
+
+    _written(client)
+
+    checks = [r for r in fake_ai.requests if r.output_schema and r.output_schema.name == "asset_check"]
+    assert checks and all("photos/desk.jpg: An engineer at a desk." in r.prompt.task[0].content for r in checks)
+
+
+def test_view_prompt_shows_exactly_what_was_sent(client: TestClient, brand: int, fake_ai: FakeTransport):
+    """Every request the model was sent is logged as it was sent ("View prompt"), for every kind of call in a
+    campaign: brief review and planning tool rounds, writing, checks, fixes and a chat edit. Only an image is
+    shown as a label instead of its data, and these calls have none."""
+    with SessionLocal() as session:
+        before = session.scalar(select(func.max(AiCall.id))) or 0
+    sent_before = len(fake_ai.requests)
+    chat_id = _written(client)
+    _send(client, chat_id, "Make the first post shorter.")
+
+    sent = [r.to_payload() for r in fake_ai.requests[sent_before:]]
+    with SessionLocal() as session:
+        logged = [c.request for c in session.scalars(select(AiCall).where(AiCall.id > before, AiCall.step != "Brand search"))]
+    key = lambda payload: json.dumps(payload, sort_keys=True)
+    assert len(sent) > 10 and sorted(map(key, logged)) == sorted(map(key, sent))
+
+
 def test_assets_share_an_image_only_when_no_other_ranked_choice_is_free(client: TestClient, brand: int,
                                                                        monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(assets_module.library, "pick", lambda *args, **kwargs: PickResult(
@@ -541,6 +570,26 @@ def test_any_earlier_version_can_be_restored_after_an_undo(client: TestClient, b
     assert already.status_code == missing.status_code == 400
 
 
+def test_view_prompt_on_an_asset_opens_the_call_that_wrote_its_current_text(client: TestClient, brand: int):
+    """It used to open the first draft's call even after a chat edit had rewritten the asset."""
+    chat_id = _written(client)
+    first = _assets(client, chat_id)[1]
+    calls = lambda: {c["id"]: c["step"] for c in client.get("/api/ai-calls", params={"chat_id": chat_id}).json()}
+    assert calls()[first["prompt_call_id"]].startswith("Write asset") and not first["hand_edited"]
+
+    _send(client, chat_id, "Shorten the second post")
+    edited = _assets(client, chat_id)[1]
+    assert calls()[edited["prompt_call_id"]].startswith("Edit asset") and not edited["hand_edited"]
+
+    by_hand = client.put(f"/api/chats/{chat_id}/assets/{first['id']}",
+                         json={"content": {**edited["content"], "text": "Typed by hand."}}).json()["asset"]
+    assert (by_hand["prompt_call_id"], by_hand["hand_edited"]) == (edited["prompt_call_id"], True)
+
+    client.post(f"/api/chats/{chat_id}/assets/{first['id']}/versions/1/restore")
+    restored = _assets(client, chat_id)[1]
+    assert (restored["prompt_call_id"], restored["hand_edited"]) == (first["prompt_call_id"], False)
+
+
 def test_a_chat_edit_that_changes_nothing_makes_no_new_version(client: TestClient, brand: int):
     chat_id = _written(client)
     linkedin = _assets(client, chat_id)[1]
@@ -588,7 +637,8 @@ def test_an_asset_can_be_removed_by_chat_and_brought_back(client: TestClient, br
     plan = client.get(f"/api/chats/{chat_id}").json()["campaign"]["plan"]
     assert [c["id"] for c in plan["assets"]] == [plan_before[0]["id"], plan_before[2]["id"]]
     assert [c["id"] for c in plan["removed"]] == [plan_before[1]["id"]]
-    assert before[1]["title"] in note["content"] and "press Undo" in note["content"]
+    assert before[1]["title"] in note["content"]
+    assert note["content"].endswith("It is hidden, not deleted: press Undo to bring it back.")  # one asset, not "They"
     assert [v["reason"] for v in client.get(f"/api/chats/{chat_id}/assets/{before[1]['id']}/versions").json()] == ["written"]
 
     assert client.post(f"/api/chats/{chat_id}/removed/{note['id']}/undo").status_code == 200
@@ -668,8 +718,7 @@ def test_a_document_choice_note_reads_as_a_sentence():
 
     note = agent._note(conflict, "acme/naming.md", ["acme/old/guide-v3.md", "acme/messaging-2024.md"])
 
-    assert note == ("On product naming, I'm following naming.md rather than guide-v3.md and messaging-2024.md, "
-                    "because the others are only a draft.")
+    assert note == "Product naming: three brand documents disagree. I used naming.md, because the others are only a draft."
 
 
 def test_an_edit_with_no_clear_target_never_offers_a_single_choice():

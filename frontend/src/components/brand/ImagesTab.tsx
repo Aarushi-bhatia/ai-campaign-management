@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type { AssetChannel, Brand, BrandImage, ImageRules } from "../../api/types";
 import { Line } from "./bits";
@@ -30,6 +30,13 @@ export function ImagesTab({ brand, corrections, onViewPrompt }: Props) {
   );
   const open = brand.images.find((image) => image.path === openPath);
   const blockedCount = brand.images.filter((image) => image.blocked).length;
+
+  useEffect(() => {
+    if (!openPath) return;
+    const close = (event: KeyboardEvent) => event.key === "Escape" && setOpenPath(null);
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [openPath]);
 
   return (
     <div className="space-y-4 p-6">
@@ -67,12 +74,12 @@ export function ImagesTab({ brand, corrections, onViewPrompt }: Props) {
           </button>
         ))}
       </div>
-      {open && <ImageDetail image={open} corrections={corrections} onViewPrompt={onViewPrompt} />}
+      {open && <ImageDetail image={open} corrections={corrections} onViewPrompt={onViewPrompt} onClose={() => setOpenPath(null)} />}
     </div>
   );
 }
 
-function ImageDetail({ image, corrections, onViewPrompt }: { image: BrandImage } & Omit<Props, "brand">) {
+function ImageDetail({ image, corrections, onViewPrompt, onClose }: { image: BrandImage; onClose: () => void } & Omit<Props, "brand">) {
   const fix = corrections.decisionFor("image_usable", image.path);
   const notes = image.notes;
   return (
@@ -88,6 +95,9 @@ function ImageDetail({ image, corrections, onViewPrompt }: { image: BrandImage }
             {{ file: "the image info file", ai: "the vision model", name: "the file name", "": "nowhere yet" }[image.description_source]}
           </p>
         </div>
+        <button onClick={onClose} title="Close (Esc)" aria-label="Close" className="self-start text-lg leading-none text-stone-400 hover:text-stone-700">
+          ✕
+        </button>
       </div>
       <Line label="Status">
         {image.blocked ? <span className="text-red-700">Blocked: {image.blocked}</span> : <span className="text-emerald-700">Usable</span>}
@@ -202,6 +212,19 @@ function TryPicking({ brandId, onViewPrompt }: { brandId: number; onViewPrompt: 
               <button onClick={() => onViewPrompt(pick.data!.call_id!)} className="ml-2 underline">View prompt</button>
             )}
           </p>
+          {pick.data.blocked.length > 0 && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-stone-500 underline">Show the {pick.data.blocked.length} blocked images and why</summary>
+              <ul className="mt-2 space-y-1">
+                {pick.data.blocked.map((b) => (
+                  <li key={b.path}>
+                    <span className="font-medium">{b.path.split("/").pop()}</span>
+                    <span className="text-red-700">: {b.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       )}
     </details>

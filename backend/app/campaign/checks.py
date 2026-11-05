@@ -208,8 +208,10 @@ def _case_matters(term: str, instead: str) -> bool:
 
 
 def _pattern(term: str, exact: bool = False) -> re.Pattern:
-    """A whole-word pattern where spaces and hyphens in the term match either. Case-blind unless `exact`."""
-    parts = [re.escape(p) for p in re.split(r"[\s\-]+", term.strip()) if p]
+    """A whole-word pattern where spaces and hyphens in the term match either. Case-blind unless `exact`.
+    Punctuation around the term is left out: a retired line listed as "Sleep through the night." is still
+    found when the copy drops the full stop or quotes it."""
+    parts = [re.escape(p) for p in re.split(r"[\s\-]+", _straight(term).strip().strip(".,;:!?\"'")) if p]
     body = r"[\s\-]+".join(parts)
     return re.compile(rf"(?<![\w-]){body}(?![\w-])", 0 if exact else re.IGNORECASE)
 

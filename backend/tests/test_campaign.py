@@ -86,7 +86,7 @@ def test_a_settled_conflict_the_agent_relied_on_is_noted_once(client: TestClient
     messages = _send(client, chat_id, CLEAR_BRIEF)
 
     notes = [m["content"] for m in messages if m["kind"] == "note"]
-    assert notes == ["On certifications, I'm following certifications.md rather than sales-notes.md, because it is the "
+    assert notes == ["Certifications: two brand documents disagree. I used certifications.md, because it is the "
                      "document that sets this."]
     assert not [m for m in _send(client, chat_id, "Who gets the email first?") if m["kind"] == "note"]
 
@@ -153,7 +153,7 @@ def test_brief_overrides_are_kept_for_this_campaign(client: TestClient):
     messages = _send(client, chat_id, f"{CLEAR_BRIEF} The early access label comes off.")
 
     assert _campaign(client, chat_id)["brief_rules"] == ["The early access label comes off for these assets only."]
-    assert "For this campaign only, the brief overrides the brand: The early access label comes off for these assets only." in [
+    assert "Your brief changes a brand rule, for this campaign only: The early access label comes off for these assets only." in [
         m["content"] for m in messages if m["kind"] == "note"
     ]
 

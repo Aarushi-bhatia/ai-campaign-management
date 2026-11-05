@@ -50,16 +50,23 @@ def memory_text(memory: list[str] | None) -> str:
     return "\n\n=== WHAT THE MARKETER HAS TOLD YOU BEFORE ===\n" + "\n".join(f"- {line}" for line in memory)
 
 
+def image_text(image: dict[str, Any] | None) -> str:
+    if image and image.get("path"):
+        return f"{image['path']}: {image.get('alt_text', '')}"
+    return "No image."
+
+
 def ai_check(ai: AiService, *, brand_name: str, summary: str | None, campaign: str, asset_label: str,
              content: dict[str, Any], facts: str, step: str, chat_id: int | None,
              brand_id: int, research: str = "(none)", rules: str = "(none)",
-             memory: list[str] | None = None) -> tuple[list[Problem], AiReply]:
+             memory: list[str] | None = None, image: dict[str, Any] | None = None) -> tuple[list[Problem], AiReply]:
     """`campaign` is the approved campaign as the writer saw it; it is the same for every check of a campaign.
     The channel's rules get a cached part of their own: they are the same for every check of an asset on that
     channel (and for Check again and re-checks after edits), so only the first check on a channel pays for them
-    in full."""
+    in full. The image is shown so the check doesn't report it missing; the free checks judge it."""
     task = (f"=== FACTS THE WRITER HAD ===\n{facts}"
             f"\n\n=== APPROVED RESEARCH FOR THIS PIECE ===\n{research}"
+            f"\n\n=== ITS IMAGE (chosen and checked separately; never flag it) ===\n{image_text(image)}"
             f"\n\n=== THE {asset_label.upper()} TO CHECK ===\n{json.dumps(content, ensure_ascii=False)}")
     reply = ai.complete(
         step=step, size=ModelSize.MEDIUM, output_schema=SCHEMA, chat_id=chat_id, brand_id=brand_id,

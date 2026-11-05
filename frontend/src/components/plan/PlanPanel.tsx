@@ -67,7 +67,7 @@ export function PlanPanel({ chatId, campaign }: Props) {
           <p className="mt-2 text-sm leading-relaxed text-stone-600">{plan.summary}</p>
         </div>
         {campaign.brief_rules.length > 0 && (
-          <Box title="This campaign overrides the brand on">
+          <Box title="Brand rules your brief changes, for this campaign only">
             {campaign.brief_rules.map((rule) => <li key={rule}>{rule}</li>)}
           </Box>
         )}

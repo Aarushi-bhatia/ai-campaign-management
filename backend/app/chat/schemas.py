@@ -94,6 +94,10 @@ class AssetOut(BaseModel):
     warnings: list[dict[str, Any]]
     version: int
     call_id: int | None
+    prompt_call_id: int | None = None
+    """The AI call that wrote the current version's text (an edit or fix, not only the first draft)."""
+    hand_edited: bool = False
+    """The current text was edited by hand after that call, so the prompt shows what it was based on."""
     error: str | None
     draft_for: str = ""
     """Set when the plan says this asset is only an optional draft for that person to post themselves."""

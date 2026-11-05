@@ -125,7 +125,8 @@ def retry_review(chat_id: int, chats: Chats):
 def update_plan(chat_id: int, body: PlanIn, chats: Chats):
     """Direct edits on the plan cards: delete, reorder, change a field."""
     chat = _chat(chats, chat_id)
-    return _run(lambda: chats.campaigns.update_plan(chat, body.assets, body.base_version, body.image_exclusions))
+    return _run(lambda: chats.campaigns.update_plan(chat, body.assets, body.base_version, body.image_exclusions,
+                                                              body.brief_rules))
 
 
 @router.post("/{chat_id}/approve", response_model=list[MessageOut])

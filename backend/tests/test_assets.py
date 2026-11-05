@@ -227,6 +227,60 @@ def test_assets_written_at_the_same_time_get_different_images(client: TestClient
         assert session.scalar(select(func.count()).select_from(AiCall).where(AiCall.step.like("Image choice asset %"))) == 3
 
 
+def test_an_image_can_be_changed_by_chat_and_undone(client: TestClient, brand: int, monkeypatch: pytest.MonkeyPatch):
+    """It used to be treated as a text edit: the image stayed, and the reply said it had changed."""
+    specs = []
+
+    def pick(session, ai, brand, spec, chat_id=None, step=None):
+        specs.append(spec)
+        if step.startswith("Image change"):
+            return PickResult(choices=[Choice("photos/new.jpg", "Shows the team.", "Two engineers at a desk.")])
+        return PickResult(choices=[Choice(f"photos/{n}.jpg", "Fits.", "A photo.") for n in ("a", "b", "c")])
+
+    monkeypatch.setattr(assets_module.library, "pick", pick)
+    chat_id = _written(client)
+    before = _assets(client, chat_id)
+    old_image = before[1]["image"]
+
+    reply = _send(client, chat_id, "Use another image for the second post")[-1]
+
+    after = _assets(client, chat_id)
+    assert after[1]["image"]["path"] == "photos/new.jpg" and after[1]["content"] == before[1]["content"]
+    assert [a["image"] for a in after if a["id"] != after[1]["id"]] == [a["image"] for a in before if a["id"] != before[1]["id"]]
+    assert specs[-1].exclude_paths == frozenset({old_image["path"]})  # never the one it has
+    assert "Now uses photos/new.jpg" in reply["content"] and "Edit cost" in reply["content"]
+    versions = client.get(f"/api/chats/{chat_id}/assets/{after[1]['id']}/versions").json()
+    assert versions[-1]["reason"] == "image change"
+
+    client.post(f"/api/chats/{chat_id}/assets/{after[1]['id']}/undo")
+    assert _assets(client, chat_id)[1]["image"] == old_image  # each version keeps its image
+
+
+def test_an_image_change_that_finds_nothing_says_so_and_changes_nothing(client: TestClient, brand: int,
+                                                                        monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(assets_module.library, "pick", lambda session, ai, brand, spec, chat_id=None, step=None:
+                        PickResult(suggestion="A photo of an on-call desk.") if step.startswith("Image change")
+                        else PickResult(choices=[Choice(f"photos/{n}.jpg", "Fits.", "A photo.") for n in ("a", "b", "c")]))
+    chat_id = _written(client)
+    before = _assets(client, chat_id)[1]
+
+    reply = _send(client, chat_id, "Use another image for the second post")[-1]
+
+    after = _assets(client, chat_id)[1]
+    assert (after["version"], after["image"]) == (before["version"], before["image"])
+    assert "not changed. No other image fits" in reply["content"]
+
+
+def test_an_image_can_be_taken_off_by_chat(client: TestClient, brand: int, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(assets_module.library, "pick", lambda *args, **kwargs:
+                        PickResult(choices=[Choice(f"photos/{n}.jpg", "Fits.", "A photo.") for n in ("a", "b", "c")]))
+    chat_id = _written(client)
+
+    reply = _send(client, chat_id, "No image on the second post")[-1]
+
+    assert _assets(client, chat_id)[1]["image"] is None and "Took the image off" in reply["content"]
+
+
 def test_the_ai_check_is_told_the_asset_has_an_image(client: TestClient, brand: int, fake_ai: FakeTransport,
                                                     monkeypatch: pytest.MonkeyPatch):
     """It used to see only the text, so it reported "no image is specified" and the fix "added" one in words."""

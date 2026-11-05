@@ -59,6 +59,8 @@ class PlanIn(BaseModel):
     """The plan version the cards show. When the plan has moved on since, the change isn't saved."""
     image_exclusions: list[str] | None = None
     """The image types still kept off. The plan shows them so a wrong one can be removed; none can be added here."""
+    brief_rules: list[str] | None = None
+    """The campaign rules still kept (points where the brief beats the brand). One can be removed; none added."""
 
 
 class AssetVersionOut(BaseModel):

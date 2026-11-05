@@ -32,6 +32,8 @@ from app.config import ModelSize
 from app.memory.service import core_texts, recent_images
 
 log = logging.getLogger(__name__)
+TEXT_STEPS = ("Write asset", "Edit asset", "Fix asset")
+"""The calls whose reply is an asset's text. Checks and image choices only look at it."""
 NO_IMAGE = re.compile(r"^\s*(no image|none|n/a)\b", re.IGNORECASE)
 KEPT = "Kept as written: "
 """Marks a flagged problem the fix step found was not a problem, so it is listed but not counted as a fix."""
@@ -239,7 +241,7 @@ class AssetWork:
         if target < 1:
             raise NothingToUndo("There is no earlier version.")
         old = versions[target]
-        asset.image = old.image
+        asset.image = image_of(old, asset)
         version = self._save(asset, "undo", Draft(old.content, warnings=self._rechecked(asset, old.content, old.warnings)),
                              note=f"Back to version {target}",
                              based_on=target, expected=asset.version if base is None else base)
@@ -253,10 +255,45 @@ class AssetWork:
         if number == asset.version:
             raise NothingToUndo(f"Version {number} is already showing.")
         old = versions[number]
-        asset.image = old.image
+        asset.image = image_of(old, asset)
         return self._save(asset, "restore", Draft(old.content, warnings=self._rechecked(asset, old.content, old.warnings)),
                           note=f"Back to version {number}",
                           based_on=number, expected=asset.version if base is None else base)
+
+    def new_image(self, asset: Asset, wish: str, base: int | None = None) -> Draft:
+        """A different image for the asset, asked for in the chat: the picker runs again for this asset alone,
+        with the same brand and brief rules, and never returns the image it has now. "No image" takes it off.
+        The text stays as it is, so only the free checks run again (the image is one of them)."""
+        current = (asset.image or {}).get("path")
+        if NO_IMAGE.match(wish):
+            if not asset.image or not current:
+                return Draft(asset.content, changed="It already has no image.", saved=False)
+            asset.image = None
+            return self._image_saved(asset, [], "Took the image off.", base)
+        card = self._card(asset)
+        with self.session.no_autoflush:
+            spec = self._spec(asset, card)
+            spec = replace(spec, message=f"{spec.message} The marketer asks for a different image: {wish or 'any other that fits'}",
+                           exclude_paths=frozenset({current}) if current else frozenset(),
+                           used_paths=self._images_in_use(asset),
+                           recent_paths=recent_images(self.session, self.brand.id, skip_campaign=self.campaign.id),
+                           memory=tuple(core_texts(self.session, self.brand.id)))
+            result = library.pick(self.session, self.ai, self.brand, spec, chat_id=self.campaign.chat_id,
+                                  step=f"Image change asset {asset.id}")
+        call_ids = [result.call_id] if result.call_id is not None else []
+        taken = self._images_in_use(asset)
+        choice = next((c for c in result.choices if c.path not in taken), result.choices[0] if result.choices else None)
+        if choice is None:
+            return Draft(asset.content, call_ids, changed=f"No other image fits, so it keeps the one it has. "
+                         f"{result.suggestion}".strip(), saved=False)
+        asset.image = {"path": choice.path, "alt_text": choice.alt_text, "why": choice.why}
+        return self._image_saved(asset, call_ids, f"Now uses {choice.path}: {choice.why}", base)
+
+    def _image_saved(self, asset: Asset, call_ids: list[int], changed: str, base: int | None) -> Draft:
+        draft = Draft(asset.content, call_ids, fixed=asset.fixed, changed=changed,
+                      warnings=self._rechecked(asset, asset.content or {}, asset.warnings))
+        self._save(asset, "image change", draft, note=changed, expected=asset.version if base is None else base)
+        return draft
 
     # Helpers
 
@@ -381,7 +418,7 @@ class AssetWork:
                                    .where(AiCall.id.in_(draft.call_ids))) if draft.call_ids else 0.0
         latest = self.session.scalar(select(func.max(AssetVersion.number)).where(AssetVersion.asset_id == asset.id))
         number = (latest or 0) + 1
-        version = AssetVersion(number=number, reason=reason, note=note, content=draft.content, image=None,
+        version = AssetVersion(number=number, reason=reason, note=note, content=draft.content, image=asset.image,
                                warnings=draft.warnings, call_ids=draft.call_ids, cost_usd=cost, based_on=based_on)
         asset.versions.append(version)
         asset.content, asset.version = draft.content, number
@@ -460,6 +497,12 @@ class AssetWork:
         return offer
 
 
+def image_of(version: AssetVersion, asset: Asset) -> dict[str, Any] | None:
+    """The image a version had. Versions saved before images were kept have none recorded, so the asset keeps
+    the one it has rather than losing it."""
+    return version.image if version.image is not None or version.reason == "image change" else asset.image
+
+
 def text_source(session: Session, asset: Asset) -> tuple[int | None, bool]:
     """The AI call that wrote the text of the asset's current version, for its "View prompt", and whether that
     text was edited by hand since. The call is the version's write, edit or fix (never a check); a version made
@@ -471,7 +514,7 @@ def text_source(session: Session, asset: Asset) -> tuple[int | None, bool]:
         version = by_number[number]
         if version.call_ids:
             steps = dict(session.execute(select(AiCall.id, AiCall.step).where(AiCall.id.in_(version.call_ids))).all())
-            makers = [i for i in version.call_ids if not steps.get(i, "").startswith("Check asset")]
+            makers = [i for i in version.call_ids if steps.get(i, "").startswith(TEXT_STEPS)]
             if makers:
                 return max(makers), hand_edited
         hand_edited = hand_edited or version.reason == "hand edit"

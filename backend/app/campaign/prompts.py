@@ -61,7 +61,8 @@ Also give:
 - brief_rules: only where the brand gives way to the brief: the brief tells you to do something the brand's \
 documents say otherwise, and it has the standing to (for example a product's status changing on a date). \
 One short sentence each, naming what it covers. Where the brief must give way to the brand, that is a \
-clash question, not a brief rule.
+clash question, not a brief rule. A point is either a question or a brief rule, never both: the app asks \
+the marketer about every brief rule before it counts.
 - assumptions: at most five, one short line each, only ones that would change the work."""
 
 PLAN_TASK = """\

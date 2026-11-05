@@ -197,6 +197,10 @@ def route(request: AiRequest) -> dict:
     if "shorten asset 3" in message:
         return {"action": "edit", "targets": [{"asset": 3, "field": ""}], "instruction": "Shorten it.",
                 "research_query": "", "reply": "Shortened it.", "ask": none, "new_assets": []}
+    if "another image" in message or "no image on" in message:
+        return {"action": "image", "targets": [{"asset": 2, "field": ""}],
+                "instruction": "no image" if "no image on" in message else "", "research_query": "",
+                "reply": "Changing the image.", "ask": {"question": "", "options": []}, "new_assets": []}
     if "drop the second post" in message or "remove everything" in message:
         numbers = (1, 2, 3) if "everything" in message else (2,)
         return {"action": "remove", "targets": [{"asset": n, "field": ""} for n in numbers], "instruction": "",

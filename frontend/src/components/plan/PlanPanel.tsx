@@ -42,12 +42,17 @@ export function PlanPanel({ chatId, campaign }: Props) {
         exclusions.map((e) => e.image_type).filter((t) => t !== type)),
     onSettled: refresh,
   });
+  const dropRule = useMutation({
+    mutationFn: (rule: string) =>
+      api.updatePlan(chatId, plan.assets, campaign.plan_version, undefined, campaign.brief_rules.filter((r) => r !== rule)),
+    onSettled: refresh,
+  });
   const approve = useMutation({ mutationFn: () => api.approvePlan(chatId, campaign.plan_version), onSettled: refresh });
   const remove = useMutation({ mutationFn: (id: string) => api.removeFinding(chatId, id), onSuccess: refresh });
   const better = useMutation({ mutationFn: (id: string) => api.betterSource(chatId, id), onSettled: refresh });
   const bringBack = useMutation({ mutationFn: (id: string) => api.bringBackFinding(chatId, id), onSuccess: refresh });
   const retry = useMutation({ mutationFn: () => api.retryResearch(chatId), onSettled: refresh });
-  const error = save.error ?? allowType.error ?? approve.error ?? better.error ?? remove.error ?? bringBack.error ?? retry.error;
+  const error = save.error ?? allowType.error ?? dropRule.error ?? approve.error ?? better.error ?? remove.error ?? bringBack.error ?? retry.error;
   const failed = new Set((plan.failed_searches ?? []).map(searchKey));
 
   function move(fromId: string, toId: string) {
@@ -68,7 +73,20 @@ export function PlanPanel({ chatId, campaign }: Props) {
         </div>
         {campaign.brief_rules.length > 0 && (
           <Box title="Brand rules your brief changes, for this campaign only">
-            {campaign.brief_rules.map((rule) => <li key={rule}>{rule}</li>)}
+            {campaign.brief_rules.map((rule) => (
+              <li key={rule}>
+                {rule}
+                {!locked && (
+                  <button
+                    onClick={() => dropRule.mutate(rule)}
+                    disabled={dropRule.isPending || save.isPending}
+                    className="ml-2 text-xs text-stone-500 underline hover:text-stone-800 disabled:opacity-40"
+                  >
+                    Keep the brand rule
+                  </button>
+                )}
+              </li>
+            ))}
           </Box>
         )}
         {exclusions.length > 0 && (

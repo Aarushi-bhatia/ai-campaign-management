@@ -146,16 +146,50 @@ def test_questions_come_one_at_a_time_then_the_plan(client: TestClient, fake_ai:
     assert first_card["data"]["answer"] == "Platform leads"
 
 
-def test_brief_overrides_are_kept_for_this_campaign(client: TestClient):
+def test_a_brief_override_is_asked_and_counts_only_after_a_yes(client: TestClient):
+    """The review once let a brief lift a brand rule ("no hashtags on X") on its own, with no way back."""
     _brand(client)
     chat_id = _chat(client)
 
-    messages = _send(client, chat_id, f"{CLEAR_BRIEF} The early access label comes off.")
+    card = _send(client, chat_id, f"{CLEAR_BRIEF} The early access label comes off.")[-1]
+
+    assert card["kind"] == "question"
+    assert "The early access label comes off for these assets only" in card["content"]
+    assert [o["label"] for o in card["data"]["options"]] == ["No, keep the brand rule", "Yes, for this campaign only"]
+    assert _campaign(client, chat_id)["brief_rules"] == []  # nothing counts before the answer
+
+    messages = client.post(f"/api/chats/{chat_id}/answer", json={"question_id": card["data"]["id"], "answer": "override"}).json()
 
     assert _campaign(client, chat_id)["brief_rules"] == ["The early access label comes off for these assets only."]
     assert "Your brief changes a brand rule, for this campaign only: The early access label comes off for these assets only." in [
         m["content"] for m in messages if m["kind"] == "note"
     ]
+
+
+def test_a_brief_override_answered_no_leaves_the_brand_rule(client: TestClient):
+    _brand(client)
+    chat_id = _chat(client)
+    card = _send(client, chat_id, f"{CLEAR_BRIEF} The early access label comes off.")[-1]
+
+    client.post(f"/api/chats/{chat_id}/answer", json={"question_id": card["data"]["id"], "answer": "keep"})
+
+    assert _campaign(client, chat_id)["brief_rules"] == []
+
+
+def test_a_campaign_rule_can_be_dropped_on_the_plan(client: TestClient):
+    _brand(client)
+    chat_id = _chat(client)
+    card = _send(client, chat_id, f"{CLEAR_BRIEF} The early access label comes off.")[-1]
+    client.post(f"/api/chats/{chat_id}/answer", json={"question_id": card["data"]["id"], "answer": "override"})
+    campaign = _campaign(client, chat_id)
+
+    response = client.put(f"/api/chats/{chat_id}/plan", json={"assets": campaign["plan"]["assets"], "brief_rules": [],
+                                                               "base_version": campaign["plan_version"]})
+
+    assert response.status_code == 200, response.text
+    assert _campaign(client, chat_id)["brief_rules"] == []
+    added = client.put(f"/api/chats/{chat_id}/plan", json={"assets": campaign["plan"]["assets"], "brief_rules": ["Anything goes."]})
+    assert added.status_code == 200 and _campaign(client, chat_id)["brief_rules"] == []  # nothing can be added here
 
 
 def test_answering_a_conflict_question_settles_it_for_the_brand(client: TestClient):

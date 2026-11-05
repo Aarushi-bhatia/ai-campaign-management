@@ -61,6 +61,19 @@ PLAN_CHANGED = ("The plan changed while I was working on this: it was approved, 
                 "left it as it is, and nothing from this step was kept. The plan shown now is the latest.")
 
 
+OVERRIDE = "override"
+
+
+def override_question(rule: str) -> dict[str, Any]:
+    """Asks before the brief beats a brand rule. The rule is in the question itself, so the answer reads on its
+    own wherever answers are shown to the model."""
+    return {"kind": "clash", "question": f"Your brief would change a brand rule: {rule.rstrip('.')}. Allow that for "
+            "this campaign?", "why": "", "source_path": "", "quote": "", "conflict_id": 0, "brief_rule": rule,
+            "options": [{"label": "No, keep the brand rule", "value": "keep"},
+                        {"label": "Yes, for this campaign only", "value": OVERRIDE}],
+            "answer": None, "stage": stages.ASKING}
+
+
 def _expired(question: dict[str, Any], stage: str) -> bool:
     """A question only applies at the stage it was asked at. One from before questions recorded their stage, still
     open once the assets are written, was about the plan (only questions about assets carry "about")."""
@@ -144,6 +157,10 @@ class CampaignService:
         new = []
         if question.get("conflict_target") and option:
             new += self._settle_conflict(chat, campaign, question["conflict_target"], option["value"])
+        if question.get("brief_rule") and option and option["value"] == OVERRIDE:
+            campaign.brief_rules = [*campaign.brief_rules, question["brief_rule"]]
+            new.append(self._post(chat, "assistant", "note",
+                                  f"Your brief changes a brand rule, for this campaign only: {question['brief_rule']}"))
         self._session.commit()  # the answer is kept even when the step after it fails
         if campaign.stage == stages.PLAN_READY:
             return new + self._guarded_step(chat, campaign,
@@ -167,8 +184,9 @@ class CampaignService:
         return self._guarded_step(chat, campaign, lambda: self._review(chat, campaign, last.content))
 
     def update_plan(self, chat: Chat, assets: list[dict[str, Any]], base: int | None = None,
-                    image_exclusions: list[str] | None = None) -> Campaign:
-        """Changes made on the plan cards: delete, reorder, edit a field, remove an image exclusion. No AI. The
+                    image_exclusions: list[str] | None = None, brief_rules: list[str] | None = None) -> Campaign:
+        """Changes made on the plan cards: delete, reorder, edit a field, remove an image exclusion or a campaign
+        rule. No AI. The
         cards send the whole list, so `base` is the plan version they show: if the plan has moved on since (a chat
         edit added a card, say), saving would undo that, so nothing is saved."""
         campaign = self._locked(chat)
@@ -188,6 +206,8 @@ class CampaignService:
         kept = {}
         if image_exclusions is not None and "image_exclusions" in campaign.plan:
             kept = {"image_exclusions": [e for e in campaign.plan["image_exclusions"] if e["image_type"] in image_exclusions]}
+        if brief_rules is not None:
+            campaign.brief_rules = [r for r in campaign.brief_rules if r in brief_rules]
         campaign.plan = {**campaign.plan, "assets": checked, **kept}
         campaign.plan_version += 1
         self._research(campaign).relink()  # a deleted card's findings stop counting
@@ -329,11 +349,12 @@ class CampaignService:
         agent = self._agent(campaign)
         review = agent.review_brief()
         new = self._memories_used(chat, campaign, remembered)
-        campaign.questions = [{**q, "answer": None, "stage": stages.ASKING} for q in review.questions]
-        campaign.brief_rules, campaign.assumptions = review.brief_rules, review.assumptions
+        # A point where the brief would beat a brand rule is never decided for the marketer: it becomes a
+        # question, with keeping the brand's rule first, and only a yes makes it a rule for this campaign.
+        campaign.questions = [{**q, "answer": None, "stage": stages.ASKING} for q in review.questions] + [
+            override_question(rule) for rule in review.brief_rules]
+        campaign.brief_rules, campaign.assumptions = [], review.assumptions
         new += self._notes(chat, agent)
-        for rule in campaign.brief_rules:
-            new.append(self._post(chat, "assistant", "note", f"Your brief changes a brand rule, for this campaign only: {rule}"))
         if campaign.questions:
             campaign.stage = stages.ASKING
             count = len(campaign.questions)
@@ -415,6 +436,8 @@ class CampaignService:
             return self._add_assets(chat, campaign, route, reply.call_id)
         if route.action == "remove":
             return self._remove_assets(chat, campaign, route, reply.call_id)
+        if route.action == "image":
+            return self._change_images(chat, campaign, route, reply.call_id)
         if route.action == "ask":
             # The model's own questions keep to four choices; "Which asset?" lists every asset, so none is missing.
             options = [o.strip() for o in route.ask["options"] if o.strip()]
@@ -474,6 +497,37 @@ class CampaignService:
                                  {"asset_ids": [a.id for a, _ in route.targets], "cost_usd": total,
                                   "call_ids": [i for i in call_ids if i is not None]},
                                  call_id=reply.call_id)]
+
+    def _change_images(self, chat: Chat, campaign: Campaign, route: editing.Route, call_id: int) -> list[Message]:
+        """A different image (or none) for the assets meant. The reply says what each now uses, or that it kept
+        its image because nothing else fits; it never claims a change that wasn't made."""
+        work = self._work(campaign)
+        lines, call_ids = [], [call_id]
+        total = self._cost(call_ids)
+        for asset, _ in route.targets:
+            label = f"{writer.TYPE_LABELS[asset.type]} “{asset.title}”"
+            try:
+                draft = work.new_image(asset, route.instruction)
+            except AiCallFailed as failure:
+                cost = self._cost([failure.call_id])
+                total += cost
+                call_ids.append(failure.call_id)
+                lines.append(f"{label}: the image couldn't be picked ({failure}), so it keeps the one it has. Ask again "
+                             f"to retry it ({_usd(cost)}).")
+                continue
+            except AssetChanged:
+                lines.append(f"{label}: it changed while I was picking, so I left your newer version as it is. Ask "
+                             "again to change its image.")
+                continue
+            cost = self._cost(draft.call_ids)
+            total += cost
+            call_ids += draft.call_ids
+            done = draft.changed if draft.saved else f"not changed. {draft.changed}"
+            lines.append(f"{label}: {done} ({_usd(cost)})")
+        body = "\n".join(f"- {line}" for line in lines)
+        return [self._post(chat, "assistant", "edit", f"{route.reply or 'Done.'}\n{body}\nEdit cost: {_usd(total)}.",
+                           {"asset_ids": [a.id for a, _ in route.targets], "cost_usd": total,
+                            "call_ids": [i for i in call_ids if i is not None]}, call_id=call_id)]
 
     def _add_assets(self, chat: Chat, campaign: Campaign, route: editing.Route, call_id: int) -> list[Message]:
         """New assets asked for after writing: added to the plan as cards, then only they are written, in the

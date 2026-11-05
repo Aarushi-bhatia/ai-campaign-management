@@ -110,7 +110,7 @@ This is the most important list. Check every piece the app writes against it.
 
 ❌ You should NOT see:
 - A question about something the brief already says (the dates, which pieces to make, who it's for).
-- A note saying "Your brief changes a brand rule, for this campaign only: … #Kubernetes #eBPF #OnCall". **This is wrong.** The brief can't undo the brand's no-hashtag rule. (We've already seen this happen once. If you see it, note it and keep going. The X posts will then probably have hashtags, and each should show a hashtag warning.)
+- A note saying "Your brief changes a brand rule, for this campaign only: …" before you've answered anything. The app must never decide that alone. If the brief would change a brand rule, you get a question instead: "Your brief would change a brand rule: … Allow that for this campaign?", with "No, keep the brand rule" first.
 
 **A2. Answer the questions.** Click the first (safe) button on each one, except for the question about Tesserline (the competitor). For that one, type:
 "Keep Tesserline out of social, but the blog post can compare approaches without naming anyone."
@@ -277,9 +277,14 @@ Then type "Wickhold Security" and save. ✅ You should see an "old name" warning
 
 ✅ You should see: the blog post is removed, then comes back with its history.
 
-**D9. Change an image by chat (a known problem).** Type "Use a different image for the landing page."
+**D9. Change an image by chat.** Type "Use a different image for the landing page."
 
-Known problem: the image doesn't change yet, even if the reply says it did. This is on the to-do list, not a new bug.
+✅ You should see:
+- The landing page gets a different image, as a new version. Its text stays exactly the same.
+- The reply says which image it now uses and why, with its cost (about a cent).
+- Undo brings the old image back.
+- If no other image fits, the reply says so and nothing changes.
+- Then type "No image on the X post": it says it took the image off (or that it already has none).
 
 **D10. Answer an old question.** If you left "Better how?" unanswered in A3, click one of its buttons now.
 

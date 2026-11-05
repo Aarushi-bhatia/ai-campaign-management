@@ -1,6 +1,7 @@
 """Chat edits once assets are written: work out which asset and part the marketer means, then edit only that.
 New assets can be asked for too; they are added to the plan and written, and the others stay as they are.
-Assets can also be taken out of the campaign; they are hidden, not deleted, so the removal can be undone.
+Assets can also be taken out of the campaign; they are hidden, not deleted, so the removal can be undone. An
+image can be changed too: the picker runs again for that asset, and its text stays as it is.
 
 The web is never searched here unless the marketer asks for research in so many words.
 """
@@ -29,6 +30,10 @@ research_query "". Never use add to change an existing asset, and never use edit
 - remove: take whole assets out of the campaign, such as "drop the second email" or "keep only one LinkedIn \
 post". List each asset to remove in targets, by its number, with field "". Never use edit to remove or empty \
 an asset.
+- image: a different image for one or more assets, or none, such as "use another photo on the landing page", \
+"a photo without people for the email" or "no image on the X post". List each asset in targets, with field "". \
+instruction is what the new image should be or show, "no image" to take it off, or "" when the message only asks \
+for a different one. Never use edit for an image: the text stays as it is.
 - ask: you can't tell which asset or what change is meant. Ask one short question with two to four options.
 - answer: a question or remark, not a change. Answer it in reply.
 
@@ -44,7 +49,7 @@ Message:
 ROUTE_SCHEMA = OutputSchema(
     name="edit_request",
     schema=strict_object({
-        "action": enum("edit", "add", "remove", "ask", "answer"),
+        "action": enum("edit", "add", "remove", "image", "ask", "answer"),
         "targets": array_of(strict_object({"asset": {"type": "integer"}, "field": TEXT})),
         "instruction": TEXT,
         "research_query": TEXT,
@@ -93,7 +98,7 @@ def route_from(raw: dict[str, Any], assets: list[Asset]) -> Route:
             return Route("add", reply, new_assets=cards)
     if raw["action"] == "ask" and raw["ask"]["question"].strip():
         return Route("ask", reply, ask={"question": raw["ask"]["question"].strip(), "options": raw["ask"]["options"]})
-    if raw["action"] in ("edit", "remove"):
+    if raw["action"] in ("edit", "remove", "image"):
         targets = []
         by_number = {number_of(a): a for a in assets}
         for target in raw["targets"]:
@@ -104,9 +109,11 @@ def route_from(raw: dict[str, Any], assets: list[Asset]) -> Route:
                     targets.append((asset, name))
         if targets and raw["action"] == "remove":
             return Route("remove", reply, [(asset, "") for asset, _ in targets])
+        if targets and raw["action"] == "image":
+            return Route("image", reply, [(asset, "") for asset, _ in targets], raw["instruction"].strip())
         if targets and raw["instruction"].strip():
             return Route("edit", reply, targets, raw["instruction"].strip(), raw["research_query"].strip())
-    if raw["action"] in ("edit", "add", "remove"):
+    if raw["action"] in ("edit", "add", "remove", "image"):
         # No usable target. A choice between assets only makes sense when there are two or more.
         if len(assets) > 1:
             return Route("ask", reply, ask={"question": "Which asset should I change?", "every_asset": True,

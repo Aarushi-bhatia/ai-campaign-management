@@ -19,7 +19,7 @@ from app.brand.files import storage_path
 from app.brand.images import channel_rules, info, notes
 from app.brand.images.library import DESCRIPTION_KEYS, TITLE_KEYS, TYPE_KEYS, field_from, tags_from
 from app.brand.models import Brand, BrandFile, ImageInfo
-from app.brand.settle import usable_facts
+from app.brand.rules.settle import usable_facts
 from app.config import ModelSize, Settings
 
 log = logging.getLogger(__name__)

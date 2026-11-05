@@ -16,16 +16,18 @@ from app.ai.transport import AiRequest
 from app.ai.models import AiCall
 from app.ai.prompt import Prompt, Turn
 from app.brand.images.picking import AssetSpec, Choice, PickResult, rank_prompt
-from app.campaign import assets as assets_module
+from app.campaign.writing import assets as assets_module
 from app.campaign.brand_tools import CHANNEL_WORDS, _channel_score
 from app.campaign.runtime import Runtime
-from app.campaign.writing import resume_interrupted
+from app.campaign.writing.queue import resume_interrupted
 from app.config import ModelSize, Settings
 from app.db import SessionLocal
 from app.jobs import InlineJobRunner
 from app.brand.models import Conflict
-from app.campaign import agent, checker, editing, writer
-from app.campaign.checks import CheckRules, free_checks
+from app.campaign import agent, editing
+from app.campaign.checking import ai as checker
+from app.campaign.writing import writer
+from app.campaign.checking.free import CheckRules, free_checks
 from app.campaign.models import Asset, Campaign
 from app.research.client import FakeWebResearch, WebPage
 from tests import brand_brain
@@ -828,7 +830,7 @@ def test_writing_cut_off_by_a_restart_starts_again(client: TestClient, brand: in
                                                     fake_web: FakeWebResearch, settings):
     from app.campaign.models import Campaign
     from app.campaign.runtime import Runtime
-    from app.campaign.writing import resume_interrupted
+    from app.campaign.writing.queue import resume_interrupted
     from app.db import SessionLocal
     from app.jobs import InlineJobRunner
 

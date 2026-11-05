@@ -9,7 +9,7 @@ import re
 from typing import Any
 
 from app.ai.prompt import TEXT, TEXT_LIST, OutputSchema, Prompt, Turn, array_of, enum, strict_object
-from app.brand.evidence import Document
+from app.brand.rules.evidence import Document
 
 CARD_VERSION = 2
 """Raise this when the prompt or schema changes, so existing cards are written again."""

@@ -8,7 +8,7 @@ import json
 from dataclasses import dataclass
 
 from app.ai.prompt import TEXT, OutputSchema, Prompt, Turn, array_of, enum, strict_object
-from app.brand.evidence import Document
+from app.brand.rules.evidence import Document
 
 FACT_VERSION = 1
 DOC_TYPES_WITH_FACTS = {"rule", "reference", "case_study", "press", "internal_note"}

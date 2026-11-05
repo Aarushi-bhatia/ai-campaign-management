@@ -312,7 +312,7 @@ def _planned_with(client: TestClient, brief: str) -> int:
 
 
 def test_a_hashtag_limit_is_kept_only_with_its_quote():
-    from app.brand.writing_rules import checked
+    from app.brand.reading.writing_rules import checked
     source = "=== LENGTH AND HASHTAG RULES ===\nX | hashtags: 0–2, at the end | x"
     raw = {"banned": [], "old_names": [], "limits": [], "hashtags": [
         {"channel": "x", "max": 2, "quote": "hashtags: 0–2, at the end"},

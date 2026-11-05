@@ -6,10 +6,10 @@ from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import func, select
 
 from app.ai.models import AiCall
-from app.brand import writing_rules
+from app.brand.reading import writing_rules
 from app.brand.models import Brand
 from app.campaign import stages
-from app.campaign.assets import AssetWork
+from app.campaign.writing.assets import AssetWork
 from app.campaign.models import Asset, Campaign
 from app.campaign.runtime import Runtime
 from app.chat.models import Chat, Message

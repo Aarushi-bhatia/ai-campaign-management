@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.prompt import TEXT, OutputSchema, Prompt, Turn, array_of, enum, strict_object
 from app.ai.service import AiService
-from app.brand.evidence import normalize
+from app.brand.rules.evidence import normalize
 from app.brand.models import Brand
 from app.campaign.models import Campaign
 from app.chat.models import Chat, Message

@@ -75,6 +75,17 @@ Several things can change a campaign at once: a chat message, a card edit, the w
 - **An AI request that hangs is retried after 2 minutes** (twice at most). OpenAI sometimes never answers a request that would take seconds; the same request then works at once on a retry. It used to wait 5 minutes per try, so a one-line plan change once took 10 minutes. The slowest real replies take about 80 seconds (brand facts), so 1 minute would cut off real work.
 - Every check that needs understanding (does the brand use X? are hashtags allowed? does the brief ban screenshots?) is answered by a structured field from the model, each with its quote, never by matching words in free text.
 
+## Code layout
+
+The backend's `brand` and `campaign` folders had grown to 22 and 15 files, with names that sounded alike (`writer.py` and `writing.py`, `checks.py` and `checker.py`, `settle.py` and `status.py`). They are grouped by job, with files only moved and renamed, so behaviour is unchanged:
+
+- `brand/reading/`: the steps of reading a brand folder (`reader`, `parsing`, `cards`, `facts`, `names`, `links`, `writing_rules`, `summary`).
+- `brand/rules/`: the plain-rule decisions, no AI (`settle`, `status`, `conflicts`, `evidence`).
+- `brand/images/`: as before. Models, routes, the service and the Brand page's views stay at the top.
+- `campaign/checking/`: `free.py` (the free rule checks, was `checks.py`) and `ai.py` (the AI check, was `checker.py`).
+- `campaign/writing/`: `writer.py` (the prompts for one asset), `queue.py` (writes a plan's assets in the background, was `writing.py`) and `assets.py` (work on one asset).
+- The agent, chat service, editing, research, costs and stages stay at the top of `campaign/`.
+
 ## Models
 
 Three OpenAI models, chosen by job size. Every job asks for a size, so a swap is one line in `.env`. See [docs/model-trial.md](docs/model-trial.md) for the trial.

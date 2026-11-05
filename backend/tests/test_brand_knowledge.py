@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.ai.fake import FakeTransport
 from app.ai.service import AiService
 from app.brand.models import Brand, BrandDecision, BrandFile, Conflict, Fact
-from app.brand.settle import settle, usable_facts
+from app.brand.rules.settle import settle, usable_facts
 from app.campaign.agent import CampaignAgent
 from app.campaign.brand_tools import BrandTools
 from app.db import SessionLocal

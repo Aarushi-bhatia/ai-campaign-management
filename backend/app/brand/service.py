@@ -5,14 +5,14 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.ai.models import AiCall
 from app.ai.transport import AiTransport
-from app.brand import cards
+from app.brand.reading import cards
 from app.brand import files as brand_files
 from app.brand.files import IncomingFile, UnsafePath
 from app.brand.images.library import BRAND_PAGE_PICK
 from app.brand.models import Brand, BrandDecision, BrandFile
-from app.brand.parsing import decode
-from app.brand.reader import BrandReader
-from app.brand.settle import same_conflict, settle
+from app.brand.reading.parsing import decode
+from app.brand.reading.reader import BrandReader
+from app.brand.rules.settle import same_conflict, settle
 from app.config import Settings
 from app.jobs import JobRunner
 

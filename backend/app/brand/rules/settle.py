@@ -6,11 +6,11 @@ Runs at the end of every read and straight after every correction, so correction
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.brand import conflicts as conflict_rules
-from app.brand import facts as fact_types
-from app.brand import summary
+from app.brand.rules import conflicts as conflict_rules
+from app.brand.reading import facts as fact_types
+from app.brand.reading import summary
 from app.brand.models import Brand, BrandDecision, BrandFile, Conflict, DocLink, Fact
-from app.brand.status import DocView, LinkView, decide_statuses
+from app.brand.rules.status import DocView, LinkView, decide_statuses
 
 
 def conflict_target(conflict: Conflict, facts: dict[int, Fact], paths: list[str]) -> str:

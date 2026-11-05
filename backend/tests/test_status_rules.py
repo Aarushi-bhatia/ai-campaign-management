@@ -1,4 +1,4 @@
-from app.brand.status import DocView, LinkView, decide_statuses
+from app.brand.rules.status import DocView, LinkView, decide_statuses
 
 NEW = DocView(1, "guidelines-2026.md", "current", "These guidelines are current.", "2026-02-10")
 OLD = DocView(2, "guidelines-v3-final.md", "current", "Version 3.0 (FINAL)", "2024-09-01")

@@ -14,9 +14,9 @@ from sqlalchemy.orm import Session
 
 from app.ai.prompt import TEXT, OutputSchema, Prompt, Turn, array_of, enum, strict_object
 from app.ai.service import AiService
-from app.brand.evidence import Document
+from app.brand.rules.evidence import Document
 from app.brand.models import Brand, Entity
-from app.brand.settle import usable_facts
+from app.brand.rules.settle import usable_facts
 from app.config import ModelSize
 
 RULES_VERSION = 2

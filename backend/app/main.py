@@ -11,7 +11,7 @@ from app.brand.startup import on_startup
 from app.calls.routes import router as calls_router
 from app.chat.routes import router as chat_router
 from app.campaign.runtime import Runtime
-from app.campaign.writing import resume_interrupted
+from app.campaign.writing.queue import resume_interrupted
 from app.config import get_settings
 from app.db import SessionLocal
 from app.memory.routes import router as memory_router

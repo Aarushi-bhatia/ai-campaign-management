@@ -51,7 +51,7 @@ class Brand(TimestampMixin, Base):
     image_rules_hash: Mapped[str | None] = mapped_column(String(64))
     image_rules_call_id: Mapped[int | None] = mapped_column(ForeignKey("ai_calls.id", ondelete="SET NULL"))
     writing_rules: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    """Rules the free checks apply to copy: banned words, length limits. See `app.brand.writing_rules`."""
+    """Rules the free checks apply to copy: banned words, length limits. See `app.brand.reading.writing_rules`."""
     writing_rules_hash: Mapped[str | None] = mapped_column(String(64))
     writing_rules_call_id: Mapped[int | None] = mapped_column(ForeignKey("ai_calls.id", ondelete="SET NULL"))
 

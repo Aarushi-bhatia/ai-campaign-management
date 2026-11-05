@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.ai.prompt import TEXT, TEXT_LIST, OutputSchema, Prompt, Turn, array_of, enum, strict_object
-from app.brand.evidence import normalize, sentence_with_all, sentences
+from app.brand.rules.evidence import normalize, sentence_with_all, sentences
 
 NAMES_VERSION = 2
 MENTION_GROUPS = ("products", "customers", "channels")

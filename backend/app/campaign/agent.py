@@ -14,9 +14,9 @@ from sqlalchemy.orm import Session
 
 from app.ai.prompt import Prompt, Turn
 from app.ai.service import AiService
-from app.brand.evidence import Document, normalize
+from app.brand.rules.evidence import Document, normalize
 from app.brand.models import Brand, BrandFile, Conflict, Fact
-from app.brand.settle import conflict_target, side_of_files, winning_fact_ids
+from app.brand.rules.settle import conflict_target, side_of_files, winning_fact_ids
 from app.campaign import prompts
 from app.campaign.brand_tools import CHANNEL_WORDS, BrandTools
 from app.campaign.models import Campaign

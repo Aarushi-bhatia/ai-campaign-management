@@ -6,7 +6,7 @@ from dataclasses import asdict
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.brand import facts as fact_types
+from app.brand.reading import facts as fact_types
 from app.brand.images.library import image_views, rules_for
 from app.brand.images.notes import ASSET_CHANNELS
 from app.brand.images.picking import AssetSpec, blocked_reason
@@ -25,7 +25,7 @@ from app.brand.schemas import (
     ReadingCostOut,
 )
 from app.brand.service import BrandService
-from app.brand.settle import chosen_winner, conflict_target, decisions_of, winning_fact_ids
+from app.brand.rules.settle import chosen_winner, conflict_target, decisions_of, winning_fact_ids
 
 RULE_ORDER = {"needs_human": 0, "you": 1}
 

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.ai.prompt import TEXT, TEXT_LIST, OutputSchema, array_of, enum, strict_object
-from app.campaign import writer
+from app.campaign.writing import writer
 from app.campaign.prompts import ASSET_TYPES, PLAN_CARD
 from app.campaign.models import Asset
 

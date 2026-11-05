@@ -1,4 +1,4 @@
-from app.brand.conflicts import Candidate, pick_winner
+from app.brand.rules.conflicts import Candidate, pick_winner
 
 LEGAL = Candidate(1, "legal/certifications.md", "current", "2026-10-02")
 SALES = Candidate(2, "sales/deck-notes.md", "current", "2026-09-30")

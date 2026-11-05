@@ -61,7 +61,7 @@ class Asset(TimestampMixin, Base):
     state: Mapped[str] = mapped_column(String(20), default="waiting")
     """waiting, writing, checking, done, failed or removed (taken out of the campaign by chat; can be undone)."""
     content: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    """The fields for its type; see `app.campaign.writer.FIELDS`."""
+    """The fields for its type; see `app.campaign.writing.writer.FIELDS`."""
     image: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     """{"path", "alt_text", "why"} for a chosen image, or {"suggestion"} when nothing fits."""
     looked_up: Mapped[list[str]] = mapped_column(JSONB, default=list)

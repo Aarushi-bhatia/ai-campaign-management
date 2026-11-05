@@ -14,16 +14,17 @@ from sqlalchemy.orm import Session
 
 from app.ai.models import AiCall
 from app.ai.service import AiCallFailed, AiService
-from app.brand import writing_rules
-from app.brand.evidence import Document, normalize, sentences
+from app.brand.reading import writing_rules
+from app.brand.rules.evidence import Document, normalize, sentences
 from app.brand.images import library
 from app.brand.images.channel_rules import ABOUT_IMAGES
 from app.brand.images.picking import AssetSpec, blocked_reason
 from app.brand.models import Brand, BrandFile
-from app.campaign import prompts, writer
+from app.campaign import prompts
+from app.campaign.writing import writer
 from app.campaign.brand_tools import BrandTools
-from app.campaign.checker import ai_check
-from app.campaign.checks import (CHANNEL_OF, FREE_CHECKS, LINK, CheckRules, Problem, free_checks,
+from app.campaign.checking.ai import ai_check
+from app.campaign.checking.free import (CHANNEL_OF, FREE_CHECKS, LINK, CheckRules, Problem, free_checks,
                                   is_empty, plain_text)
 from app.campaign.models import Asset, AssetVersion, Campaign
 from app.campaign.research import approved

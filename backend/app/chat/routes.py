@@ -8,7 +8,7 @@ from app.ai.service import AiCallFailed, AiService
 from app.ai.transport import AiTransport
 from app.brand.views import file_url
 from app.campaign import costs
-from app.campaign.assets import AssetChanged, NothingToUndo, text_source
+from app.campaign.writing.assets import AssetChanged, NothingToUndo, text_source
 from app.campaign.models import Asset, Campaign
 from app.campaign.research import UnknownFinding
 from app.campaign.runtime import Runtime

@@ -11,14 +11,15 @@ from app.ai.models import AiCall
 from app.ai.service import AiCallFailed, AiService
 from app.brand.models import Brand, Entity
 from app.brand.service import BadCorrection, save_correction
-from app.campaign import editing, stages, writer
+from app.campaign import editing, stages
+from app.campaign.writing import writer
 from app.campaign.agent import CampaignAgent, at_least_two, new_card_id, plan_problem, used_card_ids
-from app.campaign.assets import AssetChanged, AssetWork, EmptyEdit
+from app.campaign.writing.assets import AssetChanged, AssetWork, EmptyEdit
 from app.campaign.models import Asset, Campaign
 from app.campaign.prompts import ASSET_TYPES, CHANNEL_OF
 from app.campaign.research import CampaignResearch, approved
 from app.campaign.runtime import Runtime
-from app.campaign.writing import full_note, memory_notes, remembered_note, write_campaign
+from app.campaign.writing.queue import full_note, memory_notes, remembered_note, write_campaign
 from app.chat.models import Chat, Message
 from app.config import ModelSize
 from app.db import utc_now

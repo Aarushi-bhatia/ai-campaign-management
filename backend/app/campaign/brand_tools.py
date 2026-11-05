@@ -13,11 +13,11 @@ from sqlalchemy.orm import Session
 
 from app.ai.prompt import TEXT, strict_object
 from app.ai.service import AiService, Tool
-from app.brand import facts as fact_types
-from app.brand import names
+from app.brand.reading import facts as fact_types
+from app.brand.reading import names
 from app.brand.images.library import rules_for
 from app.brand.models import Brand, BrandFile, Conflict, Entity, Fact, Section
-from app.brand.settle import winning_fact_ids
+from app.brand.rules.settle import winning_fact_ids
 
 SEARCH_RESULTS = 6
 FACT_RESULTS = 30

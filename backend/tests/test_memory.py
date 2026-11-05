@@ -9,7 +9,7 @@ from app.ai.service import AiService
 from app.campaign import agent
 from app.campaign.models import Campaign
 from app.chat.models import Chat, Message
-from app.campaign.writing import remembered_note
+from app.campaign.writing.queue import remembered_note
 from app.config import Settings
 from app.db import SessionLocal
 from app.brand.images.picking import AssetSpec, rank_prompt

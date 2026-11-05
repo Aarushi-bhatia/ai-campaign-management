@@ -9,8 +9,8 @@ from typing import Any
 
 from app.ai.prompt import TEXT, OutputSchema, Prompt, Turn, array_of, enum, strict_object
 from app.ai.service import AiReply, AiService
-from app.brand.evidence import Document
-from app.campaign.checks import Problem, plain_text
+from app.brand.rules.evidence import Document
+from app.campaign.checking.free import Problem, plain_text
 from app.config import ModelSize
 
 INSTRUCTIONS = """\

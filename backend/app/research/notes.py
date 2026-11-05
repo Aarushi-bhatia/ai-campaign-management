@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from app.ai.prompt import TEXT, OutputSchema, Prompt, Turn, array_of, strict_object
 from app.ai.service import AiService
-from app.brand.evidence import Document
+from app.brand.rules.evidence import Document
 from app.config import ModelSize
 from app.research.client import WebPage, WebResearch
 

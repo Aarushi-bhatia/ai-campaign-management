@@ -1,6 +1,6 @@
 """The free checks, tested directly with many edge cases."""
 
-from app.campaign.checks import CheckRules, free_checks
+from app.campaign.checking.free import CheckRules, free_checks
 
 
 def _post(text: str, hashtags: list[str] | None = None, sources: list[str] | None = None) -> dict:

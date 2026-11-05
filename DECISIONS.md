@@ -7,7 +7,7 @@ A brand folder is too big to put in a prompt, and it contradicts itself: old and
 **Reading, in steps, each saved by a hash of its input** (so an update re-reads only what changed):
 
 1. Basics with no AI (headings, labels at the top, file-name hints), then sections with search vectors.
-2. A **card per document** (small model): type, claimed status, date, owner, topics it rules on, safe to quote, what it says it replaces. Every field carries its proving sentence; a quote that isn't in the document is thrown away.
+2. A **card per document** (small model): type, claimed status, date, owner, topics it rules on, safe to quote, what it says it replaces. Every field carries its proving sentence. A quote that isn't in the document, or is a single word or only the claimed value (a bare "Maren" doesn't prove Maren owns it), is thrown away and listed as unverified.
 3. **Names** and **links between documents** (medium model), each proved by a sentence; then **document status by plain rules**, so a replaced, draft or archived document stops being used.
 4. **Single facts** (medium model): subject, attribute, value, kind (must / must not / may / fact), scope and proving sentence. Facts that disagree become **conflicts**, settled by plain rules (below).
 5. **Images**: the info file or a vision description, with free-text restrictions turned into fixed fields (small model), and per-channel image rules.
@@ -26,7 +26,9 @@ When facts disagree, the rules are applied in this order. The first rule that le
 3. **Approved:** approved beats draft.
 4. **Newer:** a later date wins.
 5. **Live:** current beats archived.
-6. Otherwise **needs a human**: it is shown on the Brand page, and the agent asks about it only if a brief depends on it. The answer is saved as a brand decision.
+6. Otherwise **needs a human**: it is shown on the Brand page, and the agent asks about it only if a brief depends on it. The answer is saved as a brand decision for that point of disagreement, shown and undone on the Brand page. It is not copied into memory, where it would go stale when the conflict is decided again.
+
+A conflict is judged only on documents that still count for its kind of fact. When one side's document is replaced or changes type, the other side wins as "only side left".
 
 Documents on the same side never compete with each other. Each time the agent relies on a settled conflict, the chat says so in one line, for example: "Using approved-claims-2026.md over sales-deck-notes-q3.md on certifications: it is in charge of this." Wrong facts in a brief are not obeyed silently: the agent pushes back with the document and its exact sentence, and offers the safe wording as the first option. Where the brief does have the standing to change something (a launch date that ends a "beta" label), that becomes a rule for this campaign only.
 
@@ -34,17 +36,31 @@ Documents on the same side never compete with each other. Each time the agent re
 
 There are two stores per brand, kept apart on purpose:
 
-- **Core memory:** general corrections ("never call it a platform"), preferences (asset mix, tone, length) and conflict decisions. It is capped at 50 items, near-duplicates are merged, and it is always in the fixed part of every prompt, so every call follows it.
+- **Core memory:** general corrections ("never call it a platform") and preferences (asset mix, tone, length). It is capped at 50 items and is always in the fixed part of every prompt, so every call follows it.
 - **Campaign history:** one short record per finished campaign (name, goal, audience, angle, assets, images, dates). Only the planning step reads it, so plans don't repeat recent angles or images. History can grow without making every call longer and dearer, which would happen if it lived in core memory.
 
-New items are suggested by the small model from the marketer's own messages after plan changes, edits and the end of a campaign. The brief itself is never mined, because it is campaign-only by nature. Items are saved straight away with a "Remembered: …" note and Undo in the chat, since asking first for every item would be tiring. When the marketer makes the same hand fix twice, the app offers "Remember this?". The Memory page shows both stores, with the chat each item came from, and every item can be edited, pinned or deleted.
+New items are suggested by the small model from the marketer's own messages after plan changes, edits and the end of a campaign. The brief itself is never mined, because it is campaign-only by nature. Items are saved straight away with a "Remembered: …" note and Undo in the chat, since asking first for every item would be tiring. Merging is cautious, because a wrong merge loses what the marketer said:
+
+- Only clear equivalents merge on their own: the same words in another order, or only filler changed.
+- An item that contradicts an older one, or narrows or widens it, is kept beside it. When the model says it changes the older one, the note offers **Replace it**.
+- Campaign-only details ("for this launch only") are not learned for the brand.
+- Undo restores what a merge dropped, and refuses if the item was edited since. When the marketer makes the same hand fix twice, the app offers "Remember this?". The Memory page shows both stores, with the chat each item came from, and every item can be edited, pinned or deleted.
 
 ## Writing, checking and editing
 
 - **One asset, one call,** with only what it needs: the fixed part, the approved campaign, then this asset's channel rules, facts, research and image. Each type has fixed fields, so previews and checks can rely on them.
-- **Images:** blocking runs first, on fixed fields only, so a retired or events-only image can never be ranked; the brief's own image rules are added on top. When nothing fits, the asset says so and suggests a photo.
-- **Checks in two layers:** free rule checks (banned words, retired names, lengths, the image, citations against approved research), then an AI check of claims and tone that only counts words really in the asset. One automatic fix, then visible warnings. Hand edits run only the free checks, at $0. Chat edits rewrite only the asset and field meant. Every change is a version.
+- **Images:** blocking runs first, on fixed fields only, so a retired or events-only image can never be ranked. An image whose rights haven't been checked is blocked too. Image types the brief rules out ("no screenshots") are a hard block as well; the plan lists them with the brief's words and an **Allow** button, in case the model misread the brief. When nothing fits, the asset says so and suggests a photo.
+- **Checks in two layers:** free rule checks (banned words, retired names, lengths, hashtag limits, the image, citations against approved research), then an AI check of claims and tone that only counts words really in the asset. One automatic fix, then visible warnings. Hand edits run only the free checks, at $0. Chat edits rewrite only the asset and field meant. Every change is a version.
 - **Research only while planning,** per asset, shown on the plan with link and date for the marketer to keep or remove. Each search runs once; a finding whose quote isn't on the page is dropped; edits never search unless asked. Brand documents beat the web on product facts, prices and guidelines.
+
+## Keeping saves consistent
+
+Several things can change a campaign at once: a chat message, a card edit, the writing job, Check again. So:
+
+- An AI call is logged in its own short transaction, and no database lock is held while the model works. Each step saves once at the end, so a failed step leaves nothing half-saved.
+- Plan saves, approval, answers and Check again each say which version they saw. If it changed meanwhile, nothing is saved and the latest state is shown.
+- A question asked while planning expires once the plan is approved.
+- Every check that needs understanding (does the brand use X? are hashtags allowed? does the brief ban screenshots?) is answered by a structured field from the model, each with its quote, never by matching words in free text.
 
 ## Models
 
@@ -52,28 +68,30 @@ Three OpenAI models, chosen by job size. Every job asks for a size, so a swap is
 
 | Size | Model | Jobs | Why |
 |---|---|---|---|
-| Small | `gpt-6-luna` | Document cards, image descriptions and restrictions, research notes, memory, campaign records | In the trial it read dates and owners out of prose better than Terra, at a tenth of the price. These jobs run once per file or per message, so price matters most. |
-| Medium | `gpt-6.1-terra` | Facts, names, conflicts, writing rules, image choice, claims and tone check, fixes, edits | As accurate as Sol on the facts that matter, with more even subject names (which helps conflicts group), at about a quarter of the cost. In the full run it caught every planted problem in a finished post. |
-| Large | `gpt-6.1-sol` | Brief review, questions, planning, the brand summary, writing every asset | The copy a marketer judges, and the decisions that shape a campaign. It read best in the trial, and across 20 assets in the full run it kept the brand's voice and naming rules. It is about 80% of a campaign's cost ($0.24–$0.66 per brief); quality was not traded for tokens here. |
+| Small | `gpt-6-luna` | Document cards, image descriptions and restrictions, research notes, memory, campaign records | Read dates and owners out of prose better than Terra in the trial, at a tenth of the price. These jobs run per file or per message. |
+| Medium | `gpt-6.1-terra` | Facts, names, conflicts, writing rules, image choice, claims and tone check, fixes, edits | As accurate as Sol on the facts that matter, with more even subject names, at a quarter of the cost. It caught every planted problem in the full run. |
+| Large | `gpt-6.1-sol` | Brief review, questions, planning, the brand summary, writing every asset | The copy a marketer judges and the decisions that shape a campaign. It read best in the trial and kept the brand's voice across 20 assets. About 80% of a campaign's cost; quality was not traded for tokens here. |
 
-**Prompt caching.** Every prompt is built in the same order: the fixed part (the same for every call for a brand), then the campaign part, then the task. Left to itself the API caches up to the end of every prompt, paying 1.25× input to store one-off tasks too. So cache points are placed by hand, after the fixed part and after a shared campaign part, while tool loops keep the default because each round resends the last. The 30-minute lifetime is used: a campaign's calls come minutes apart, so the 12-hour one (2.5× to write) would buy nothing. Numbers are in [COSTS.md](COSTS.md).
+**Prompt caching.** Every prompt is built in the same order: the fixed part (the same for every call for a brand), then the campaign part, then the task. Cache points are placed by hand after the fixed part and a shared campaign part, so one-off tasks don't pay 1.25× to be stored; tool loops keep the default, because each round resends the last. The 30-minute lifetime is used: a campaign's calls come minutes apart, so the 12-hour one (2.5× to write) would buy nothing. A channel's rules are still part of each asset's own task, not of a cached part shared by that channel's assets. Moving them would change every writing prompt, for a saving of cents per campaign, so it was left. Numbers are in [COSTS.md](COSTS.md).
 
 ## What was left out
 
 - **Live text as it's written.** Asset cards show Waiting → Writing → Checking → Done, and the chat shows status lines, but the text arrives whole. This was the spec's first cut if time ran short.
 - **Live updates by event stream.** The browser polls every 1.5 seconds while writing, which is simpler and good enough for one user.
-- **A brand dropdown** for several brands. New chats use the most recently read brand.
+- **Brand roles and switching inside a chat.** A new chat uses the brand chosen in the sidebar (or the most recently read one), and keeps it.
 - **Non-text brand documents** (PDF, slides, spreadsheets), publishing, scheduling, logins, and image generation, as agreed in the spec.
 
 ## Where the AI tools led us wrong
 
-- **Conflict rules, first draft.** A replaced document could still win on "owner", internal battlecards tied with real policy, and two documents saying the same thing were counted as a conflict. These were found by reading the real results, and fixed by applying "replaces" first, never letting internal notes be in charge, and grouping facts into sides.
+- **Conflict rules, first draft.** A replaced document could still win on "owner", internal battlecards tied with real policy, and two documents agreeing counted as a conflict. Fixed by applying "replaces" first, never letting internal notes be in charge, and grouping facts into sides.
 - **Noisy notes.** The agent's tools hand it many facts, and the first version noted every conflict it had merely seen: 9 notes on one brief, most about things it never used. A note is now shown only when the winning fact's value appears in what the agent wrote.
 - **Brief rules backwards.** The agent first listed cases where the brief gives way to the brand as "overrides". The prompt now says plainly that a brief rule only goes the other way.
 - **Stock-photo clichés.** Images were judged only against their own notes, so a hooded-hacker stock image passed even though the brand's rules ban the motif. Notes are now judged against the brand's image rules too.
-- **Cache points.** Moving everything to hand-placed cache points also took caching away from tool loops, where each round resends the last round. One brief review read 46k tokens with only 7k from cache, at $0.08 a round. The call log showed it at once, and tool loops went back to the default cache point.
-- **Checks too strict.** The first full run gave every asset 2–8 warnings, and the automatic fix deleted real product facts. There were three causes. The AI check never saw the brief, so it called the brief's facts unsupported. A banned capitalisation ("LeashGate") was matched without regard to case, so every correct "Leashgate" was flagged. And the fix model's notes on flags it rejected were shown as warnings. Now the check sees the approved campaign, capital-only bans match exactly, and rejected flags are listed as "kept as written". The next run had no false warnings, and a planted false claim was still caught.
-- **Prose before JSON.** Once in 20 assets, the writer put a sentence ("The selected console image conflicts with the brief…") before its JSON, and the asset failed. The sentence was right: the image picker had only been given the brief's overrides, not its own image rules. Replies are now read past such a sentence, and every sentence of the brief about images reaches the picker.
+- **Cache points.** Hand-placed cache points first took caching away from tool loops too: one brief review round read 46k tokens with 7k cached, at $0.08. The call log showed it, and tool loops went back to the default.
+- **Checks too strict.** The first full run gave every asset 2–8 warnings, and the fix deleted real product facts. The AI check never saw the brief; a banned capitalisation ("LeashGate") flagged every correct "Leashgate"; and flags the fix rejected were shown as warnings. Now the check sees the approved campaign, capital-only bans match exactly, and rejected flags read "kept as written". The next run had no false warnings, and a planted false claim was still caught.
+- **Prose before JSON.** Once in 20 assets, the writer put a sentence before its JSON ("The selected console image conflicts with the brief…"), and the asset failed. The sentence was right: the picker hadn't been given the brief's image rules. Replies are now read past such a sentence, and the brief's image rules reach the picker.
+- **Word patterns for decisions.** Whether hashtags are allowed was decided by a regex, patched twice, and it still fired on "up to two at the end are fine". Same for "x" inside a file name meaning the X channel. These are now structured answers from the model, each with its quote.
+- **A schema that stalled the model.** Asking a chat edit of the plan to also return the image exclusions made most real replies time out (8 of 12), while the same edit without that field replied in seconds. Exclusions are now changed only with Allow on the plan.
 - **Small things:** a markdown "#" in chat titles, database key order breaking the hand-fix counter, and tool searches counted as brand-reading cost. All were caught by tests or by reading the call log.
 
 ## With two more weeks
@@ -84,10 +102,4 @@ Three OpenAI models, chosen by job size. Every job asks for a size, so a swap is
 - Let the marketer approve or reject each auto-fix, rather than only seeing a note.
 - Several brands with a dropdown, and roles (a reviewer who only approves).
 - A small evaluation set from real campaigns to compare models and prompts on, rather than judging by eye.
-
-## Implement later
-
-- **Changing an asset's image by chat.** Found in testing: "why don't we have another image instead of this" did nothing. The request was treated as a text edit, but the edit step only sees an asset's text fields. The image picker never ran again, so the same image stayed. The reply then repeated the model's claim that the image was replaced, next to "not changed, so no new version". It cost $0.02 for nothing.
-  - **By chat:** a request about the image ("use a different image", "use a photo of the team") should run the image picker again for that asset, leaving out the current image and taking the marketer's words as guidance, within the brand's and the brief's image rules. A new image is saved as a new version with the same text, so it can be undone. When nothing fits, say so plainly.
-  - **A "Pick another image" button** under the image in the preview, doing the same without typing (one image-choice call, under a cent).
-  - **Honest replies:** when an edit changes nothing, the chat should say only that, not the model's description of a change it couldn't make.
+- **Changing an asset's image by chat.** "Use another image" is treated as a text edit today, so nothing changes, while the reply repeats the model's claim that it did. A request about the image should run the image picker again for that asset, without the current image and within the brand's and brief's rules, saved as a new version. A "Pick another image" button could do the same. And when an edit changes nothing, the reply should say only that.

@@ -4,10 +4,12 @@ For each brief: paste it into a new chat, answer any questions with the agent's 
 approve the plan, wait for the assets, then make one typical chat edit. Saves the chat, plan, assets and
 cost report per brief, and prints a table for COSTS.md.
 
-    uv run python scripts/run_briefs.py brief-1.md brief-2.md      # brief files
-    uv run python scripts/run_briefs.py - < briefs.txt              # pasted briefs, split by a line of =====
+    uv run python scripts/run_briefs.py /preload-brand/briefs       # every .md file in a folder
+    uv run python scripts/run_briefs.py brief-1.md brief-2.md        # brief files
+    uv run python scripts/run_briefs.py - < briefs.txt                # pasted briefs, split by a line of =====
 
-The app must be running (docker compose up). APP_URL defaults to http://localhost:8000.
+The app must be running (docker compose up). APP_URL defaults to http://localhost:8000. A brief that fails
+(its review or plan errors, say) is recorded as failed and the run goes on with the next one.
 """
 
 import json
@@ -34,10 +36,14 @@ EDITS = {
 client = httpx.Client(base_url=APP, timeout=1800)
 
 
+class BriefFailed(Exception):
+    pass
+
+
 def call(method: str, path: str, **kwargs):
     response = client.request(method, path, **kwargs)
     if response.status_code >= 400:
-        raise SystemExit(f"{method} {path} failed: {response.status_code} {response.text}")
+        raise BriefFailed(f"{method} {path} failed: {response.status_code} {response.text}")
     return response.json() if response.content else None
 
 
@@ -56,10 +62,14 @@ def run(name: str, brief: str) -> dict:
     answers = []
     while (chat := call("GET", f"/api/chats/{chat_id}"))["campaign"]["stage"] == "asking":
         question = open_question(chat["messages"])
+        if question is None:
+            raise BriefFailed("the chat is asking, but no question is open")
         option = question["options"][0]["value"]
         answers.append({"question": question["question"], "answer": option})
         print(f"[{name}] Q: {question['question']}\n[{name}] A: {option}", flush=True)
         call("POST", f"/api/chats/{chat_id}/answer", json={"question_id": question["id"], "answer": option})
+    if chat["campaign"]["stage"] != "plan_ready" or not chat["campaign"]["plan"]:
+        raise BriefFailed(f"no plan: the campaign stopped at {chat['campaign']['stage']}")
     plan = chat["campaign"]["plan"]
     print(f"[{name}] plan: {len(plan['assets'])} assets, {len(chat['campaign']['research'])} research findings. Approving…",
           flush=True)
@@ -67,7 +77,7 @@ def run(name: str, brief: str) -> dict:
     deadline = time.monotonic() + WAIT_SECONDS
     while call("GET", f"/api/chats/{chat_id}")["campaign"]["stage"] != "done":
         if time.monotonic() > deadline:
-            raise SystemExit(f"[{name}] writing didn't finish in {WAIT_SECONDS}s")
+            raise BriefFailed(f"writing didn't finish in {WAIT_SECONDS}s")
         time.sleep(5)
     assets = call("GET", f"/api/chats/{chat_id}/assets")
     edit = next((EDITS[a["type"]] for a in assets if a["type"] in ("linkedin_post", "x_post")), EDITS[assets[0]["type"]])
@@ -104,13 +114,30 @@ def briefs_from(args: list[str]) -> list[tuple[str, str]]:
     if args == ["-"]:
         texts = [t.strip() for t in re.split(r"^={5,}\s*$", sys.stdin.read(), flags=re.MULTILINE) if t.strip()]
         return [(f"brief {i}", t) for i, t in enumerate(texts, start=1)]
-    return [(Path(a).stem, Path(a).read_text()) for a in args]
+    paths = [p for a in args for p in (sorted(Path(a).glob("*.md")) if Path(a).is_dir() else [Path(a)])]
+    missing = [str(p) for p in paths if not p.is_file()]
+    if missing or not paths:
+        raise SystemExit(f"No brief file at: {', '.join(missing) or ', '.join(args)}. Brief files must be visible "
+                         "inside the container, for example in the brand folder (/preload-brand) or under backend/.")
+    return [(p.stem, p.read_text()) for p in paths]
+
+
+def attempt(name: str, brief: str) -> dict:
+    """One brief; a failure is recorded and printed, and the next brief still runs."""
+    try:
+        return run(name, brief)
+    except BriefFailed as failure:
+        print(f"[{name}] FAILED: {failure}", flush=True)
+        return {"brief": name, "error": str(failure)}
 
 
 def table(results: list[dict]) -> str:
     rows = ["| Brief | Questions | Assets (written) | Total cost | Cache hit rate | Plan | Research | Writing | Checks | Typical edit |",
             "|---|---|---|---|---|---|---|---|---|---|"]
     for r in results:
+        if "error" in r:
+            rows.append(f"| {r['brief']} | failed: {r['error'][:80]} |||||||||")
+            continue
         s = r["stages"]
         rows.append(f"| {r['brief']} | {r['questions']} | {r['assets']} ({r['assets'] - len(r['failed'])}) | ${r['cost_usd']:.3f} | {r['cache_hit_rate']:.0%} | "
                     f"${s.get('Questions', 0) + s.get('Plan', 0):.3f} | ${s.get('Research', 0):.3f} | "
@@ -121,7 +148,7 @@ def table(results: list[dict]) -> str:
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         raise SystemExit(__doc__)
-    results = [run(name, text) for name, text in briefs_from(sys.argv[1:])]
+    results = [attempt(name, text) for name, text in briefs_from(sys.argv[1:])]
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "table.md").write_text(table(results) + "\n")
     print("\n" + table(results))

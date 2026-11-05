@@ -4,12 +4,12 @@ A local app where a marketer and an AI agent plan and write a campaign for a bra
 
 1. **Add a brand.** Upload a brand folder, or preload one from settings. The app reads it once: a card per document, single facts, which documents replace which, settled conflicts, image rules and a short brand summary. The Brand page then opens so you can check and correct what it learned.
 2. **Paste a brief** into a new chat. The agent looks things up in the brand and asks only what it needs, one question at a time. If the brief contradicts the brand's rules, it pushes back and quotes the source.
-3. **Review the plan.** Each asset is a card: emails, LinkedIn and X posts, blog posts, landing pages. Where outside facts help, the agent searches the web while planning and shows each finding with its link and date. Change the plan by chat or on the cards, remove findings you don't want, then press **Approve plan**. Nothing is written before that.
+3. **Review the plan.** Each asset is a card: emails, LinkedIn and X posts, blog posts, landing pages. Where outside facts help, the agent searches the web while planning and shows each finding with its link and date. Change the plan by chat or on the cards, remove findings you don't want, and check the image types the brief rules out (each can be allowed again), then press **Approve plan**. Nothing is written before that.
 4. **Assets are written,** a few at a time, each in its own AI call with an image from the library. Each one is checked: free rule checks first, then an AI check of claims and tone. Anything found is fixed once automatically, and whatever is left shows as a warning. The right panel shows each asset the way it would really look.
 5. **Edit** by chat ("shorten the second post"), which rewrites only that asset or field, or type straight into an asset, which costs nothing. Every change is a version, with Undo and Compare.
 6. **Memory.** Corrections and preferences you give in chat are remembered for the brand's next campaigns, with an Undo note. The Memory page shows core memory and campaign history.
 
-Every AI call is logged with its tokens, cache use and cost. **View prompt** shows exactly what was sent. The **Costs** tab breaks a campaign down by stage, asset and edit.
+Every AI call is logged with its tokens, cache use and cost. **View prompt** shows exactly what was sent. The **Costs** tab breaks a campaign down by stage, asset and edit, and lists every call with its share read from the cache.
 
 ## Run it
 
@@ -46,13 +46,15 @@ docker compose down -v
 
 ## Reproducing the cost numbers
 
-With the app running, this runs briefs end to end with the real key. It answers questions with the agent's suggestion, approves, waits for the assets and makes one typical edit. It saves the chat, assets and costs under `backend/data/runs/`, and prints the table used in [COSTS.md](COSTS.md).
+With the app running, this runs briefs end to end with the real key. It answers questions with the agent's suggestion, approves, waits for the assets and makes one typical edit. It saves the chat, assets and costs under `backend/data/runs/`, and prints the table used in [COSTS.md](COSTS.md). A brief that fails is recorded as failed, and the run goes on with the next one.
+
+The sample briefs are in the brand pack's `briefs/` folder. The container sees the brand folder at `/preload-brand` when `BRAND_DIR` is set in `.env`, so set `BRAND_DIR` to the brand pack and `BRAND_EXCLUDE=briefs` (the briefs must not be read as brand documents), then:
 
 ```bash
-docker compose exec backend uv run python scripts/run_briefs.py data/briefs/brief-1.md data/briefs/brief-2.md
+docker compose exec backend uv run python scripts/run_briefs.py /preload-brand/briefs
 ```
 
-Brief files must be inside `backend/` to be visible in the container. To paste briefs instead, pass `-` and separate them with a line of `=====`.
+A folder runs every `.md` file in it. Brief files can also be put under `backend/` (it is mounted at `/app`) and named one by one. To paste briefs instead, pass `-` and separate them with a line of `=====`.
 
 ## Tests
 

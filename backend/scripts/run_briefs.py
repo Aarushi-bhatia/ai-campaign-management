@@ -8,7 +8,8 @@ cost report per brief, and prints a table for COSTS.md.
     uv run python scripts/run_briefs.py brief-1.md brief-2.md        # brief files
     uv run python scripts/run_briefs.py - < briefs.txt                # pasted briefs, split by a line of =====
 
-The app must be running (docker compose up). APP_URL defaults to http://localhost:8000. A brief that fails
+The app must be running (docker compose up). APP_URL defaults to http://localhost:8000. BRAND_ID picks the
+brand; without it, chats use the most recently read brand. A brief that fails
 (its review or plan errors, say) is recorded as failed and the run goes on with the next one.
 """
 
@@ -23,6 +24,7 @@ from pathlib import Path
 import httpx
 
 APP = os.environ.get("APP_URL", "http://localhost:8000")
+BRAND_ID = int(os.environ["BRAND_ID"]) if os.environ.get("BRAND_ID") else None
 OUT = Path(os.environ.get("RUN_DIR", "data/runs")) / datetime.now().strftime("%Y%m%d-%H%M%S")
 WAIT_SECONDS = 1800
 EDITS = {
@@ -56,7 +58,7 @@ def open_question(messages: list[dict]) -> dict | None:
 
 def run(name: str, brief: str) -> dict:
     started = time.monotonic()
-    chat_id = call("POST", "/api/chats")["id"]
+    chat_id = call("POST", "/api/chats", json={"brand_id": BRAND_ID})["id"]
     print(f"\n[{name}] chat {chat_id}: pasting the brief…", flush=True)
     call("POST", f"/api/chats/{chat_id}/messages", json={"content": brief})
     answers = []

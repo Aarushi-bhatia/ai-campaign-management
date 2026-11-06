@@ -10,15 +10,25 @@ You need Docker, an OpenAI API key and a Firecrawl API key.
 cp .env.example .env
 ```
 
-Fill in `OPENAI_API_KEY` and `FIRECRAWL_API_KEY` in `.env`. Then start everything:
+Fill in `OPENAI_API_KEY` and `FIRECRAWL_API_KEY` in `.env`. Then start it one of two ways.
+
+**Reading the brand yourself.** Start the app, then add the brand folder in it:
 
 ```bash
 docker compose up
 ```
 
-Open http://localhost:5173, click the **Brand** card at the bottom left, then **Add a brand**, and choose the brand folder. Reading the sample brand (84 documents, 133 images) takes about 15 minutes and costs about $1.63. It is read once; later updates re-read only changed files.
+**With the sample brand already read (quickest).** A separate seed step loads Wickhold from `backend/seed/wickhold.tar.gz` before the app starts, so there is nothing to wait for or pay for:
 
-To start from scratch, remove the volumes:
+```bash
+docker compose --profile seed up
+```
+
+To read it yourself, open http://localhost:5173, click the **Brand** card at the bottom left, then **Add a brand**, and choose the brand folder. Reading the sample brand (84 documents, 133 images) takes about 15 minutes and costs about $1.63. It is read once; later updates re-read only changed files. You can add more brands the same way either way.
+
+Either way, the Brand page opens once so you can see what was read.
+
+The seed only loads into an empty app. To switch from one way to the other, first remove everything (brands, chats and memory):
 
 ```bash
 docker compose down -v

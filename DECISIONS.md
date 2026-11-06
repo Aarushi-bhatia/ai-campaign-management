@@ -159,6 +159,7 @@ I would prioritise retrieval and model testing first. The quality of generated c
 
 - **Editable summary:** the brand summary can be edited by hand and is marked out of date when facts change. Its text is hashed so it isn't rebuilt when nothing changed.
 - **Background reading:** brand reading runs as a background job, and the page checks every 3 seconds. A second read of the same brand is blocked while one is running.
+- **Seed brand:** the sample brand ships already read, loaded by a separate script that Docker runs only when asked (`--profile seed`). It is not part of the app, and it loads only if there is no brand yet. A new install doesn't wait 15 minutes or pay to read it again. Chats and memory are never part of it.
 
 **Code quality**
 

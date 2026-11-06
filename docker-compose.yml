@@ -35,6 +35,25 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+        required: false  # only with --profile seed
+
+  # Not part of the app: loads the sample brand, already read, into an empty app. Runs only with
+  # `docker compose --profile seed up`, and finishes before the app starts. See backend/scripts/seed.py.
+  seed:
+    build: ./backend
+    profiles: ["seed"]
+    command: sh -c "alembic upgrade head && python -m scripts.seed load seed/wickhold.tar.gz"
+    environment:
+      DATABASE_URL: postgresql+psycopg://campaign:campaign@db:5432/campaign
+      DATA_DIR: /data
+    volumes:
+      - ./backend:/app
+      - app-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
 
   frontend:
     image: node:22-alpine

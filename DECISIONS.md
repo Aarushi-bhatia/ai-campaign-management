@@ -41,8 +41,6 @@ The agent has separate tools for different kinds of information:
 - Channel rules are retrieved separately, with up to 60 rules available.
 - The agent can read one document at a time, up to 12,000 characters.
 
-Only current documents are searched. Search currently compares the query against every stored chunk rather than using an approximate vector index. This keeps the implementation simpler, although it may become slower as the brand folder grows.
-
 **Keeping corrections**
 
 A marketer can correct information on the Brand page. These manual corrections take priority over extracted facts and remain in place when documents are updated. Internal documents can also be marked "background only, never quote".
@@ -51,26 +49,18 @@ A marketer can correct information on the Brand page. These manual corrections t
 
 I wanted the agent to use information that can be traced back to its source, without sending the entire brand folder to the model every time. Separating extraction from conflict resolution also means that the model can interpret a document, while application code applies the same rules consistently.
 
-One limitation remains: search can still return a chunk containing a claim that lost a conflict. The conflict system knows which fact should win, but search does not yet filter out every losing claim.
-
 ## 3. Memory: how it works and why
 
 Brand knowledge comes from company documents. Memory comes from what the marketer tells the agent. I keep them separate because a casual comment in a conversation should not override an approved brand claim.
 
 There are two types of memory:
 
-- **Core memory:** Lasting preferences and instructions, such as words the marketer wants to avoid. It can contain up to 50 items, and all of them are included in every prompt.
-- **Campaign history:** Short records of previous campaigns. Only the five most recent are retrieved during planning.
+- **Core memory:** lasting preferences and instructions, such as words the marketer wants to avoid. It is kept small (up to 50 items) and goes into every prompt, so every call follows it and no memory search is needed.
+- **Campaign history:** short records of past campaigns. Only planning reads the recent ones, so new plans don't repeat old ones, and history can grow without making every call longer.
 
-The agent learns from the marketer's messages, not from campaign briefs or answers to clarification questions. It tries to skip temporary instructions such as "for this launch only". This depends on the model's judgement, so it is not guaranteed to be perfect.
+The agent learns only from what the marketer says in the chat. It never learns from the brief or from answers to its questions, because those apply to one campaign. It also skips one-off requests such as "for this launch only"; this depends on the model's judgement. Repeated hand edits are a signal too: when the same wording change is made twice, the app asks whether to remember it rather than saving it silently.
 
-When core memory reaches 50 items, the oldest unpinned item is removed. Since all 50 items fit in the prompt, a separate memory search is unnecessary.
-
-New memories are saved immediately, with an Undo option in the chat. Similar items are merged only when they are clear duplicates. If a new instruction changes an existing one, both are kept until the marketer chooses whether to replace the old item.
-
-The app offers to remember a wording change once it has been made by hand twice. Plain code counts these changes, so the offer costs no AI call. Marketers can pin, edit and delete memories on the Memory page.
-
-The current brief always takes priority over memory. A saved preference should not prevent the marketer from making a different request for a particular campaign. This is an instruction in the prompt, so it depends on the model following it.
+Memory never quietly overrules anything. A new instruction that contradicts an old one is kept beside it until the marketer chooses, and the current brief always takes priority over memory.
 
 ## 4. Handling conflicting documents
 

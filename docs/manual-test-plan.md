@@ -21,7 +21,7 @@ Do the tests in order. Later tests use the campaign you made in earlier ones.
 **Before you start**
 
 - The app is running and the Wickhold brand is loaded (the Brand page says it's ready).
-- **Money:** one full run of this test costs about $0.60 to $1.00. Typing edits by hand is free. The OpenAI key has used about $7.76 of $10, so there's room for one full run and a few retries.
+- **Money:** one full run of this test costs about $0.60 to $1.00. Typing edits by hand is free.
 
 ---
 

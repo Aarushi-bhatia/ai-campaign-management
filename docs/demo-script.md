@@ -9,7 +9,7 @@ Each step has:
 - 〜 **May vary:** the AI decides this, so the wording or number can differ. That's fine.
 - **Say:** one line to say, in your own words. Optional.
 
-**Money:** about $1.00–1.30 for the whole recording. The OpenAI key has used $2.72 of $10, so there's room for a retake. Everything marked **free** makes no AI call.
+**Money:** about $1.00–1.30 for the whole recording. Everything marked **free** makes no AI call.
 
 ---
 

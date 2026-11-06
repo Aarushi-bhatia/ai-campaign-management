@@ -25,7 +25,7 @@ Fill in `OPENAI_API_KEY` in `.env`. `FIRECRAWL_API_KEY` is optional; without it,
 docker compose up
 ```
 
-Open http://localhost:5173 and add a brand with **+ Add brand**, choosing the brand folder. Reading the sample brand (84 documents, 133 images) takes about 15 minutes and costs about $1.75. Reading is done once, and later updates re-read only changed files.
+Open http://localhost:5173 and add a brand with **+ Add brand**, choosing the brand folder. Reading the sample brand (84 documents, 133 images) takes about 15 minutes and costs about $1.63. Reading is done once, and later updates re-read only changed files.
 
 To preload a brand on first start instead, set `BRAND_DIR` in `.env` to the folder (relative to `.env`), and `BRAND_EXCLUDE` to any subfolders that aren't brand material, such as `briefs`.
 

@@ -12,7 +12,7 @@ Same symbols as the main test plan:
 - ❌ must NOT happen
 - 〜 may vary, because the AI decides it
 
-**Money:** about $0.35 in all. The OpenAI key has used $9.17 of $10.
+**Money:** about $0.35 in all.
 - Answering questions, editing by hand and Undo are free.
 - Only the steps marked with a cost call the AI.
 - Don't press Approve in Part 1. That would write 11 pieces and cost about $0.40 more.

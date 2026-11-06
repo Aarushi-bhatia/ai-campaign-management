@@ -362,7 +362,7 @@ Each fix widens or narrows the pattern, and it breaks the other way. The hashtag
 - **Migration:** no.
 
 **Risks:**
-- **Real-model runs are needed.** The writing-rules and brief-review changes alter prompts, so they need real-model checks. The OpenAI key is at $5.75, already past the $5 cap, so I need your approval for that spend.
+- **Real-model runs are needed.** The writing-rules and brief-review changes alter prompts, so they need real-model checks. Each one costs a little.
 - **A wrong hard block hides images.** If the model reads a brief's image rule wrongly, a hard block hides images that should be allowed. The block should be shown on the plan, so the marketer can see it and remove it.
 - **Old briefs.** Campaigns reviewed before the change have no structured image exclusions, so they keep today's behaviour.
 

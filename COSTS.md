@@ -6,6 +6,8 @@ Measured on 2026-11-04 by running the three sample briefs end to end against the
 docker compose exec backend uv run python scripts/run_briefs.py /preload-brand/briefs
 ```
 
+The briefs come from the brand pack's `briefs/` folder, which the container sees when `.env` has `BRAND_DIR` set to the brand pack and `BRAND_EXCLUDE=briefs`. Results are saved under `backend/data/runs/`.
+
 For each brief, the script pastes it into a new chat and answers any questions with the agent's suggested option. It approves the plan, waits for every asset to be written, checked and fixed, then makes one typical chat edit ("Make the first LinkedIn post shorter, about half the length"). Prices are OpenAI's Standard tier, per million tokens:
 
 | Model | Input | Cached input | Cache write | Output |

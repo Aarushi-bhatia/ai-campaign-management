@@ -4,7 +4,7 @@ the app: Docker runs it as its own step, before the app starts, only when asked.
     docker compose --profile seed up                                                 # load the sample brand
     docker compose exec backend uv run python -m scripts.seed export 2 seed/wickhold.tar.gz   # save a brand
 
-`export` writes one brand's rows, the AI calls that read it (so the Brand page's View prompt and the reading cost
+`export` writes one brand's rows, the AI calls behind them (so the Brand page's View prompt and the reading cost
 still work) and its stored files into one .tar.gz. `load` puts them into a database with no brand yet. Chats,
 memory and campaigns are never part of it.
 
@@ -94,8 +94,9 @@ def load(database_url: str, data_dir: Path, seed: Path) -> int:
 
 
 def _copy_out(conn: psycopg.Connection, table: str, columns: list[str], brand_id: int) -> tuple[bytes, int]:
-    """The brand's rows, and how many. Its AI calls are the brand-wide ones (no chat) and any its rows point at;
-    a call made in a chat is kept without the chat, which isn't exported."""
+    """The brand's rows, and how many. Its AI calls are only the ones its rows point at: earlier reads of the same
+    documents were replaced, so they would overstate what reading the brand costs. A call made in a chat is kept
+    without the chat, which isn't exported."""
     brand = sql.Literal(brand_id)
     selected = [sql.SQL("NULL") if (table, c) == ("ai_calls", "chat_id") else sql.Identifier(c) for c in columns]
     if table == "brands":
@@ -104,8 +105,7 @@ def _copy_out(conn: psycopg.Connection, table: str, columns: list[str], brand_id
         refs = [sql.SQL("SELECT {} FROM {} WHERE brand_id = {}").format(sql.Identifier(c), sql.Identifier(t), brand)
                 for t, cs in _CALL_REFS.items() for c in cs]
         refs += [sql.SQL("SELECT {} FROM brands WHERE id = {}").format(sql.Identifier(c), brand) for c in BRAND_CALLS]
-        where = sql.SQL("(brand_id = {} AND chat_id IS NULL) OR id IN ({})").format(
-            brand, sql.SQL(" UNION ").join(refs))
+        where = sql.SQL("id IN ({})").format(sql.SQL(" UNION ").join(refs))
     else:
         where = sql.SQL("brand_id = {}").format(brand)
     query = sql.SQL("COPY (SELECT {} FROM {} WHERE {} ORDER BY id) TO STDOUT WITH (FORMAT csv, HEADER)").format(

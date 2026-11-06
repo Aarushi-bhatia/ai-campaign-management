@@ -9,7 +9,7 @@ from sqlalchemy import func, select, text
 from app.ai.fake import FakeTransport
 from app.ai.models import AiCall
 from app.brand.files import storage_path
-from app.brand.models import Brand, BrandFile, Conflict, Fact, Section
+from app.brand.models import Brand, BrandFile, Conflict, Fact, ImageInfo, Section
 from app.config import Settings
 from app.db import Base, SessionLocal, engine
 from scripts import seed
@@ -32,7 +32,16 @@ def _read_brand(client: TestClient) -> int:
 def _counts() -> dict[str, int]:
     with SessionLocal() as session:
         return {model.__tablename__: session.scalar(select(func.count()).select_from(model))
-                for model in (Brand, BrandFile, Section, Fact, Conflict, AiCall)}
+                for model in (Brand, BrandFile, Section, Fact, Conflict)}
+
+
+def _calls_behind_the_data() -> set[int]:
+    """The AI calls the brand's rows point at: the ones a seed keeps."""
+    with SessionLocal() as session:
+        columns = (Brand.summary_call_id, Brand.image_rules_call_id, Brand.writing_rules_call_id,
+                   BrandFile.card_call_id, BrandFile.facts_call_id, Conflict.call_id,
+                   ImageInfo.describe_call_id, ImageInfo.notes_call_id)
+        return {i for column in columns for i in session.scalars(select(column)) if i is not None}
 
 
 def _empty_database() -> None:
@@ -45,7 +54,7 @@ def test_a_brand_comes_back_from_its_seed_exactly_as_it_was_read(client: TestCli
     brand_id = _read_brand(client)
     chat_id = client.post("/api/chats").json()["id"]  # a chat is never part of a seed
     before = client.get(f"/api/brands/{brand_id}").json()
-    counts = _counts()
+    counts, calls = _counts(), _calls_behind_the_data()
     out = tmp_path / "seed.tar.gz"
 
     seed.export(TEST_DATABASE_URL, settings.data_dir, brand_id, out)
@@ -55,6 +64,8 @@ def test_a_brand_comes_back_from_its_seed_exactly_as_it_was_read(client: TestCli
 
     assert loaded == brand_id
     assert _counts() == counts
+    with SessionLocal() as session:  # only the calls behind the data: earlier reads would overstate the cost
+        assert set(session.scalars(select(AiCall.id))) == calls
     with SessionLocal() as session:
         brand = session.get(Brand, brand_id)
         assert (brand.status, brand.summary, brand.reviewed) == ("ready", before["summary"], False)

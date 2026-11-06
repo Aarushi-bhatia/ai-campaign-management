@@ -1,7 +1,7 @@
 """A brand already read, saved to one file, so a new install can skip reading the sample brand. It is not part of
 the app: Docker runs it as its own step, before the app starts, only when asked.
 
-    docker compose --profile seed up                                                 # load the sample brand
+    SEED=1 docker compose up                                                         # load the sample brand
     docker compose exec backend uv run python -m scripts.seed export 2 seed/wickhold.tar.gz   # save a brand
 
 `export` writes one brand's rows, the AI calls behind them (so the Brand page's View prompt and the reading cost

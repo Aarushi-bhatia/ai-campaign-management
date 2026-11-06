@@ -21,7 +21,7 @@ docker compose up
 **With the sample brand already read (quickest).** A separate seed step loads Wickhold from `backend/seed/wickhold.tar.gz` before the app starts, so there is nothing to wait for or pay for:
 
 ```bash
-docker compose --profile seed up
+SEED=1 docker compose up
 ```
 
 To read it yourself, open http://localhost:5173, click the **Brand** card at the bottom left, then **Add a brand**, and choose the brand folder. Reading the sample brand (84 documents, 133 images) takes about 15 minutes and costs about $1.63. It is read once; later updates re-read only changed files. You can add more brands the same way either way.

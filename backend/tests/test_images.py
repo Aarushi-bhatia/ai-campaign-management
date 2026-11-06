@@ -255,7 +255,7 @@ def test_an_image_that_breaks_a_brand_image_rule_is_blocked(client: TestClient):
 
 def test_an_image_whose_changed_restrictions_could_not_be_read_is_blocked(client: TestClient, fake_ai: FakeTransport):
     """The reviewer's probe: the image's record now said "Deprecated", the notes call failed, and the old
-    "usable" notes stayed, with the brand shown as ready (#6)."""
+    "usable" notes stayed, with the brand shown as ready."""
     brand_id = _upload(client)
     assert not _images(client, brand_id)["images/hero-team.jpg"]["blocked"]
 
@@ -278,7 +278,7 @@ def test_an_image_whose_changed_restrictions_could_not_be_read_is_blocked(client
 
 
 def test_a_pick_tried_on_the_brand_page_is_not_reading_cost(client: TestClient):
-    """It has no chat, so it was counted as reading the brand (#38)."""
+    """It has no chat, so it was counted as reading the brand."""
     from app.ai.models import AiCall
     from app.brand.images.library import BRAND_PAGE_PICK
     from app.db import SessionLocal

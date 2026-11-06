@@ -227,7 +227,7 @@ def test_core_memory_stays_small(client: TestClient, brand: int):
     assert core[0]["text"] == "Item zero." and core[-1]["text"] == "Item 54."
 
 
-# Ticket 9 review
+# A full memory and pinned items
 
 def _fill(client: TestClient, brand: int, pinned: bool) -> list[dict]:
     items = []
@@ -348,7 +348,7 @@ def test_adding_memory_for_a_missing_brand_is_a_404(client: TestClient):
     assert client.post("/api/brands/999/memory", json={"text": "Anything."}).status_code == 404  # was a server error
 
 
-# Group 3 of the design review: memory undo and history records keep the earlier state
+# Memory undo and history records keep the earlier state
 
 def test_undo_after_memory_was_full_brings_back_the_dropped_item(client: TestClient, brand: int):
     """Undo used to remove the new item and lose the one dropped to make room for it, for good."""
@@ -447,7 +447,7 @@ def test_undo_does_not_bring_back_wording_memory_holds_again(client: TestClient,
     assert last["content"].startswith("Undone. Not brought back, as memory already holds it again")
 
 
-# Group 4 of the design review: memory keeps an item's identity; a change never overwrites it
+# Memory keeps an item's identity; a change never overwrites it
 
 @pytest.mark.parametrize("old, new, changed", [
     ("Keep LinkedIn posts under 150 words.", "Keep LinkedIn posts under 200 words.", True),

@@ -89,7 +89,7 @@ def test_a_campaign_can_leave_images_out():
 
 
 def test_an_image_type_the_brief_rules_out_is_blocked_even_when_marked_usable():
-    """The brief's image rules used to be only a hint to the ranking model (#16)."""
+    """The brief's image rules used to be only a hint to the ranking model."""
     spec = AssetSpec(channel="email", asset_type="email", message="launch", excluded_types=frozenset({"product_screenshot"}))
 
     assert blocked_reason(_image(image_type="product_screenshot", override="yes"), spec, _rules()) == (
@@ -103,7 +103,7 @@ def test_an_image_whose_restrictions_havent_been_read_is_blocked():
     assert blocked_reason(unread, _spec(), _rules()) == "Its rights and restrictions haven't been checked yet (or couldn't be): use Read again."
 
 
-# Group 5 of the design review (#18)
+# The marketer's own image verdict
 
 def test_usable_yes_overrules_the_verdict_but_not_the_images_own_channel_limits():
     retired = _image(override="yes", retired=True)

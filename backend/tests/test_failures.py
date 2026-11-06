@@ -108,7 +108,7 @@ def test_a_document_with_a_very_long_path_is_read(client: TestClient):
     assert len(long_one) <= 200 and "…" in long_one  # the end of the path is kept, so it's still recognisable
 
 
-# Group 1 of the design review: logging an AI call must not save, or roll back, the caller's work.
+# Logging an AI call must not save, or roll back, the caller's work.
 
 def test_logging_an_ai_call_does_not_save_the_callers_unfinished_work(client: TestClient, settings):
     chat_id = client.post("/api/chats").json()["id"]

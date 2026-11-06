@@ -1,4 +1,4 @@
-"""Preloading a brand folder on start. Group 4 of the design review (#5)."""
+"""Preloading a brand folder on start."""
 
 from pathlib import Path
 from types import SimpleNamespace

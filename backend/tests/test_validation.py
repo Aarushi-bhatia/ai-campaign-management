@@ -1,6 +1,5 @@
 """Inputs and stage changes are checked at the API, not only in the UI or on the AI's path, and rules are taken
-from structured answers, not wording. Regression tests for Groups 6 and 7 of the design review. Fake AI and fake
-web search only."""
+from structured answers, not wording. Fake AI and fake web search only."""
 
 import json
 from types import SimpleNamespace
@@ -49,7 +48,7 @@ def _messages(client: TestClient, chat_id: int) -> list[dict]:
 # The plan: one set of rules for every path
 
 def test_the_x_channel_is_not_found_inside_other_words():
-    """A file named context.md used to add X posts to a brand with only email and LinkedIn playbooks (#7)."""
+    """A file named context.md used to add X posts to a brand with only email and LinkedIn playbooks."""
     text = "acme/channels/email-playbook.md acme/channels/linkedin.md acme/context.md index text example"
 
     assert channels_mentioned(text) == ["email", "linkedin"]
@@ -58,7 +57,7 @@ def test_the_x_channel_is_not_found_inside_other_words():
 
 
 def test_plan_cards_with_the_same_id_twice_are_refused(client: TestClient):
-    """They used to be saved and then written as two assets with one plan id (#8)."""
+    """They used to be saved and then written as two assets with one plan id."""
     chat_id = _planned(client)
     campaign = _campaign(client, chat_id)
     first = campaign["plan"]["assets"][0]
@@ -79,7 +78,7 @@ def test_a_card_for_a_channel_the_brand_does_not_use_is_refused():
 
 
 def test_an_empty_plan_can_be_neither_saved_nor_approved(client: TestClient):
-    """The UI disabled the button, but the API approved a plan with no assets, ending at done with nothing (#20)."""
+    """The UI disabled the button, but the API approved a plan with no assets, ending at done with nothing."""
     chat_id = _planned(client)
     version = _campaign(client, chat_id)["plan_version"]
 
@@ -98,7 +97,7 @@ def test_an_empty_plan_can_be_neither_saved_nor_approved(client: TestClient):
 # Questions: only answered at the stage they were asked at, always with a real choice
 
 def test_a_plan_question_left_open_expires_when_the_plan_is_approved(client: TestClient):
-    """It could be answered after approval, and the answer was then sent to the asset editor (#35)."""
+    """It could be answered after approval, and the answer was then sent to the asset editor."""
     chat_id = _planned(client)
     card = client.post(f"/api/chats/{chat_id}/messages", json={"content": "Make it better"}).json()[-1]
     assert card["kind"] == "question" and card["data"]["question"] == "Better how?"
@@ -129,7 +128,7 @@ def test_an_open_plan_question_from_before_questions_had_a_stage_also_expires(cl
 
 
 def test_a_question_card_always_offers_two_choices():
-    """With no usable options it used to offer only "You decide" (#36)."""
+    """With no usable options it used to offer only "You decide"."""
     assert [o["label"] for o in _options(["  ", ""])] == ["You decide", "Leave it as it is"]
     assert [o["label"] for o in _options(["Shorter"])] == ["Shorter", "You decide"]
     assert at_least_two(["All of them"]) == ["All of them", "You decide"]
@@ -139,7 +138,7 @@ def test_a_question_card_always_offers_two_choices():
 # A failed brief review can be tried again without typing
 
 def test_try_again_reviews_the_brief_already_sent(client: TestClient, fake_ai: FakeTransport):
-    """Typing "try again" used to become the brief (#34)."""
+    """Typing "try again" used to become the brief."""
     chat_id = client.post("/api/chats").json()["id"]
     state = {"failed": False}
 
@@ -164,7 +163,7 @@ def test_try_again_reviews_the_brief_already_sent(client: TestClient, fake_ai: F
 # Research, dates, typed content, hand fixes, uploads
 
 def test_research_asked_for_no_asset_is_not_searched(fake_web: FakeWebResearch):
-    """Its findings would have counted for no asset, yet the chat said "N findings" (#31)."""
+    """Its findings would have counted for no asset, yet the chat said "N findings"."""
     searched = []
     fake_web._pages = lambda query: searched.append(query) or []
     campaign = SimpleNamespace(research=[], searches=[], chat_id=1, brand_id=1)
@@ -198,7 +197,7 @@ def _written(client: TestClient) -> tuple[int, dict]:
     (1, {"hashtags": "launch"}, "hashtags must be a list"),
 ])
 def test_typed_content_of_the_wrong_shape_is_refused(client: TestClient, index: int, change: dict, problem: str):
-    """A hand edit with a field of the wrong shape used to crash the free checks with a 500 (#40)."""
+    """A hand edit with a field of the wrong shape used to crash the free checks with a 500."""
     chat_id, assets = _written(client)
     asset = assets[index]
 
@@ -210,7 +209,7 @@ def test_typed_content_of_the_wrong_shape_is_refused(client: TestClient, index: 
 
 
 def test_the_same_swap_twice_in_one_save_counts_once(client: TestClient):
-    """It counted as two, so "Remember this?" came after a single hand edit (#41)."""
+    """It counted as two, so "Remember this?" came after a single hand edit."""
     chat_id, assets = _written(client)
     post = assets[1]
     url = f"/api/chats/{chat_id}/assets/{post['id']}"
@@ -229,7 +228,7 @@ def test_the_same_swap_twice_in_one_save_counts_once(client: TestClient):
 
 def test_an_upload_with_a_file_that_is_also_a_folder_is_refused_before_anything_is_saved(client: TestClient,
                                                                                          brand: int, settings):
-    """It used to fail halfway with a 500, after some files were already written (#37)."""
+    """It used to fail halfway with a 500, after some files were already written."""
     files = [("files", ("acme/aaa-first.md", b"# First\n\nWritten first.\n")), ("files", ("acme/a.md", b"# A\n")),
              ("files", ("acme/a.md/b.md", b"# B\n"))]
 
@@ -243,12 +242,12 @@ def test_an_upload_with_a_file_that_is_also_a_folder_is_refused_before_anything_
     assert not list(settings.data_dir.rglob("aaa-first.md"))  # nothing was written
 
 
-# Rules from structured answers, not from wording (Group 7)
+# Rules from structured answers, not from wording
 
 def test_the_image_types_a_brief_rules_out_are_on_the_plan_and_block_those_images(client: TestClient,
                                                                                  monkeypatch: pytest.MonkeyPatch):
     """The brief's image rules used to be only a hint to the ranking model, so a screenshot could still be
-    picked (#16). An exclusion whose quote isn't in the brief is dropped: it would hide images unseen."""
+    picked. An exclusion whose quote isn't in the brief is dropped: it would hide images unseen."""
     specs = []
     monkeypatch.setattr(library, "pick", lambda session, ai, brand, spec, **kwargs: specs.append(spec) or PickResult())
     chat_id = _planned_with(client, f"{BRIEF} No screenshots.")
@@ -285,7 +284,7 @@ def test_a_chat_edit_keeps_the_image_exclusions(client: TestClient):
 @pytest.mark.parametrize("allowed, warned", [(2, False), (0, True), (None, False)])
 def test_the_hashtag_limit_is_the_number_the_writing_rules_give(client: TestClient, fake_ai: FakeTransport,
                                                                 allowed: int | None, warned: bool):
-    """A wording regex used to decide, and fired on rules that allow hashtags (#14)."""
+    """A wording regex used to decide, and fired on rules that allow hashtags."""
     def reply(request: AiRequest):
         if request.output_schema and request.output_schema.name == "writing_rules":
             limits = [] if allowed is None else [{"channel": "x", "max": allowed, "quote": "Write short sentences."}]

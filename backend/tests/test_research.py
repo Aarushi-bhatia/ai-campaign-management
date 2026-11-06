@@ -1,4 +1,4 @@
-"""Web research on the plan: regression tests from the ticket 6 review. Fake web search, fake AI."""
+"""Web research on the plan. Fake web search, fake AI."""
 
 import time
 

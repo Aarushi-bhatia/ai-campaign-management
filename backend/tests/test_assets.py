@@ -402,7 +402,7 @@ def test_the_image_picker_is_told_which_images_the_campaign_already_uses():
     assert "Prefer a different image" in task
 
 
-# Ticket 8 review
+# Checks, fixes and undo after writing
 
 def test_undo_to_the_first_draft_brings_back_its_problems(client: TestClient, brand: int):
     chat_id = _written(client)
@@ -954,8 +954,8 @@ def test_every_campaign_step_has_a_stage_on_the_costs_tab():
 
 def test_a_chat_edit_costs_the_same_in_the_costs_tab_as_in_the_chat(client: TestClient, brand: int):
     """The Costs tab summed only the versions' calls, so it left out the call that routes the request and the
-    assets whose edit failed, and showed less than the chat's "Edit cost" (#27). The memory call after the
-    edit isn't part of it either (#43)."""
+    assets whose edit failed, and showed less than the chat's "Edit cost". The memory call after the
+    edit isn't part of it either."""
     chat_id = _written(client)
     edit = _send(client, chat_id, "Shorten the second post")[-1]
     with SessionLocal() as session:  # the fake AI's calls cost nothing; give each one a price
@@ -1012,7 +1012,7 @@ def test_a_chat_edit_sees_the_same_channel_rules_and_facts_as_the_first_draft(cl
     assert _section(edit, "FACTS FOR THIS ASSET") == _section(write, "FACTS FOR THIS ASSET")
 
 
-# Group 3 of the design review: undo, restore and failed edits keep the whole earlier state
+# Undo, restore and failed edits keep the whole earlier state
 
 def _versions(client: TestClient, chat_id: int, asset_id: int) -> list[dict]:
     return client.get(f"/api/chats/{chat_id}/assets/{asset_id}/versions").json()

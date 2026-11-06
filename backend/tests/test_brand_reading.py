@@ -174,7 +174,7 @@ def test_a_claim_with_an_invented_quote_goes_back_to_unknown(client: TestClient)
 
 
 def test_a_one_word_quote_or_the_bare_value_is_not_proof():
-    """"Maren" is in the document, so it used to prove that Maren owns it (#24)."""
+    """"Maren" is in the document, so it used to prove that Maren owns it."""
     from app.brand.reading.cards import checked_card
     document = "# Launch notes\n\nOwner: Maren Tolliver\nStatus: draft\nMaren wrote most of this.\n"
     reply = {"claimed_status": {"value": "draft", "evidence": "draft"},

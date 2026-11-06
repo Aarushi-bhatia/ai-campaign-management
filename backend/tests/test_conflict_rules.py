@@ -131,7 +131,7 @@ def test_documents_that_agree_do_not_compete():
 
 
 def test_an_internal_document_never_wins_as_in_charge():
-    """When the only document named in charge was internal, the owner rule fell back to it, and it won (#2)."""
+    """When the only document named in charge was internal, the owner rule fell back to it, and it won."""
     notes = Candidate(7, "internal/notes.md", "current", "2026-05-01", internal=True)
     guide = Candidate(8, "pricing-guide.md", "current", "2026-01-01")
 

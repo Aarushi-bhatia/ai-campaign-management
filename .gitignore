@@ -23,7 +23,7 @@ dist/
 *.tsbuildinfo
 *.log
 *.bak
-docs/*.diff
+docs/
 
 # Local tool and OS files
 .scratch/

@@ -207,7 +207,7 @@ def test_saving_a_hand_edit_started_before_a_newer_version_is_refused(client: Te
     assert _assets(client, chat_id)[1]["content"]["text"] == "Short."  # the chat edit was kept
 
 
-# Group 2 of the design review: a slow plan step, and a change made while it ran
+# A slow plan step, and a change made while it ran
 
 PAGE = WebPage("https://example.org/widgets", "Widget report", "Intro. The widget market grew 12% in 2026. More text.",
                "2026-05-01")

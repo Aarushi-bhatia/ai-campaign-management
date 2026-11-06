@@ -201,10 +201,10 @@ def test_an_impossible_correction_is_refused(client: TestClient):
     assert response.status_code == 400
 
 
-# Group 5 of the design review: derived data is kept, and corrections reach everything built from it
+# Derived data is kept, and corrections reach everything built from it
 
 def test_facts_come_back_when_a_documents_type_goes_away_and_back(client: TestClient, fake_ai: FakeTransport):
-    """They were deleted while the "already read" marker stayed, so they never came back (#4)."""
+    """They were deleted while the "already read" marker stayed, so they never came back."""
     brand_id = _upload(client)
     correct = lambda value: client.post(f"/api/brands/{brand_id}/corrections",  # noqa: E731
                                         json={"kind": "document_kind", "target": "guide.md", "value": value})
@@ -224,7 +224,7 @@ def test_facts_come_back_when_a_documents_type_goes_away_and_back(client: TestCl
 
 
 def test_a_document_set_back_to_current_no_longer_loses_as_replaced(client: TestClient):
-    """The "replaces" rule was built from the raw links, whatever the marketer corrected (#3)."""
+    """The "replaces" rule was built from the raw links, whatever the marketer corrected."""
     brand_id = _upload(client)
     assert _conflict(_brand(client, brand_id), "tone")["rule"] == "replaces"
 
@@ -235,10 +235,10 @@ def test_a_document_set_back_to_current_no_longer_loses_as_replaced(client: Test
     assert tone["rule"] != "replaces" and "replaces" not in tone["reason"]
 
 
-# Group 8: only current documents reach the agent
+# Only current documents reach the agent
 
 def test_the_read_tool_does_not_hand_over_a_replaced_document(client: TestClient, fake_ai: FakeTransport, settings):
-    """It returned the old guide's full text (#17), and a push-back quote could come from it."""
+    """It returned the old guide's full text, and a push-back quote could come from it."""
     brand_id = _upload(client)
     with SessionLocal() as session:
         brand = session.get_one(Brand, brand_id)
@@ -299,7 +299,7 @@ def test_a_conflict_with_no_side_left_no_longer_applies(client: TestClient):
     assert "none of these facts count" in certifications["reason"]  # shown as no longer applying, not as needing a pick
 
 
-# Group 4 of the design review: a conflict choice is found by the conflict, not only its documents
+# A conflict choice is found by the conflict, not only its documents
 
 def _second_point(brand_id: int) -> int:
     """A second conflict on the certifications conflict's subject, between the same two documents, on another
@@ -327,7 +327,7 @@ def _choose(client: TestClient, brand_id: int, conflict: dict, path: str) -> dic
 
 
 def test_a_winner_chosen_for_one_point_leaves_the_other_points_alone(client: TestClient):
-    """The choice was named by subject and documents only, so it applied to every conflict between them (#1)."""
+    """The choice was named by subject and documents only, so it applied to every conflict between them."""
     brand_id = _upload(client)
     _second_point(brand_id)
     before = _conflict(_brand(client, brand_id), "release status")
@@ -342,7 +342,7 @@ def test_a_winner_chosen_for_one_point_leaves_the_other_points_alone(client: Tes
 
 
 def test_a_choice_stays_when_another_document_joins_and_says_so(client: TestClient):
-    """The name listed every document, so a document joining made the choice silently stop applying (#21)."""
+    """The name listed every document, so a document joining made the choice silently stop applying."""
     brand_id = _upload(client)
     chosen = _conflict(_choose(client, brand_id, _conflict(_brand(client, brand_id), "certifications"),
                                "internal/sales-notes.md"), "certifications")
@@ -378,7 +378,7 @@ def test_a_choice_saved_in_the_old_naming_still_applies(client: TestClient):
     assert _conflict(_brand(client, brand_id), "certifications")["winner"] == "internal/sales-notes.md"
 
 
-# The folders left out of an upload are remembered (#23)
+# The folders left out of an upload are remembered
 
 def test_the_folders_left_out_are_remembered_for_the_next_update(client: TestClient):
     brand_id = _upload(client)  # leaves out briefs/

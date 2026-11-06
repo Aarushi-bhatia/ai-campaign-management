@@ -132,7 +132,7 @@ def test_a_link_the_brief_or_brand_gives_is_not_a_citation():
     assert _checks(_post("More at https://acme.example/product."), approved_urls=known) == []
 
 
-# Ticket 8 review
+# Edge cases in length limits
 
 def test_a_word_limit_does_not_replace_the_platforms_character_limit():
     limits = [{"channel": "linkedin", "field": "text", "max": 1000, "unit": "words"}]
@@ -152,7 +152,7 @@ def test_an_x_link_counts_as_23_characters():
 
 def test_hashtags_are_flagged_only_past_the_number_the_channel_rules_allow():
     """The limit is the structured number from the writing rules. A wording regex used to fire on rules that allow
-    hashtags, such as "Avoid hashtags mid-sentence; up to two at the end are fine" (#14)."""
+    hashtags, such as "Avoid hashtags mid-sentence; up to two at the end are fine"."""
     post = {"author": "Acme", "text": "Leashgate is here. #AIsecurity", "hashtags": ["Kubernetes", "#aisecurity"]}
 
     assert _checks(post, "x_post", hashtag_max=0) == [("hashtags", "#Kubernetes")]

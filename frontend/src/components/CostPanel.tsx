@@ -20,7 +20,7 @@ export function CostPanel({ chatId, brandId }: { chatId: number; brandId: number
         </p>
         {brand.data && (
           <p className="mt-1 text-xs text-stone-500">
-            Reading the brand (once, shared by every campaign): {formatCost(brand.data.reading_cost.usd)} over {brand.data.reading_cost.calls} calls.
+            Reading the brand and its updates (shared by every campaign): {formatCost(brand.data.reading_cost.usd)} over {brand.data.reading_cost.calls} calls.
           </p>
         )}
       </div>

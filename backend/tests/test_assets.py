@@ -15,7 +15,7 @@ from app.ai.prompt import Prompt, Turn
 from app.ai.transport import AiRequest
 from app.brand.images.picking import AssetSpec, Choice, PickResult, rank_prompt
 from app.brand.models import Conflict
-from app.campaign import agent, editing
+from app.campaign import agent, costs, editing
 from app.campaign.brand_tools import CHANNEL_WORDS, _channel_score
 from app.campaign.checking import ai as checker
 from app.campaign.checking.free import CheckRules, free_checks
@@ -943,6 +943,13 @@ def test_the_cost_report_has_stages_assets_and_edits(client: TestClient, brand: 
     assert len(report["assets"]) == 3
     assert report["edits"][0]["reason"] == "chat edit"
     assert 0 <= report["total"]["cache_hit_rate"] <= 1
+
+
+def test_every_campaign_step_has_a_stage_on_the_costs_tab():
+    """An image changed by chat used to land in "Other"."""
+    assert costs.stage_of("Image change asset 107") == "Images"
+    assert costs.stage_of("Image choice asset 107") == "Images"
+    assert costs.stage_of("Something new") == "Other"
 
 
 def test_a_chat_edit_costs_the_same_in_the_costs_tab_as_in_the_chat(client: TestClient, brand: int):

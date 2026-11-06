@@ -15,7 +15,7 @@ STAGES = [
     ("Plan", ("Campaign plan", "Plan edit")),
     ("Research", ("Research notes",)),
     ("Brand lookups", ("Brand search",)),
-    ("Images", ("Image choice",)),
+    ("Images", ("Image choice", "Image change")),
     ("Writing", ("Write asset",)),
     ("Checks", ("Check asset", "Fix asset")),
     ("Edits", ("Edit request", "Edit asset")),

@@ -1,6 +1,7 @@
 export function formatCost(usd: number | null): string {
   if (usd === null) return "price unknown";
   if (usd === 0) return "$0";
+  if (usd < 0.0001) return "under $0.0001"; // embeddings: a few millionths of a dollar each
   if (usd < 0.01) return `$${usd.toFixed(4)}`;
   return `$${usd.toFixed(2)}`;
 }

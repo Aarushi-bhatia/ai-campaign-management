@@ -43,7 +43,8 @@ SCHEMA = OutputSchema(
         {
             "facts": array_of(
                 strict_object(
-                    {"subject": TEXT, "attribute": TEXT, "value": TEXT, "kind": enum(*KINDS), "scope": TEXT, "evidence": TEXT}
+                    {"subject": TEXT, "attribute": TEXT, "value": TEXT, "kind": enum(*KINDS), "scope": TEXT,
+                     "evidence": TEXT}
                 )
             )
         }

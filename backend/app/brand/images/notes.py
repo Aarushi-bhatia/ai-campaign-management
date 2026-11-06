@@ -13,8 +13,8 @@ SHORT_DESCRIPTION_WORDS = 6
 """A description shorter than this is too thin to choose by, so the vision model looks at the image too."""
 NOTES_BATCH = 25
 
-IMAGE_TYPES = ("photography", "illustration", "product_screenshot", "logo", "icon", "abstract_graphic", "social_template",
-               "chart", "other")
+IMAGE_TYPES = ("photography", "illustration", "product_screenshot", "logo", "icon", "abstract_graphic",
+               "social_template", "chart", "other")
 CHANNELS = ("email", "linkedin", "x", "blog", "landing_page", "events", "paid_ads", "press", "print")
 ASSET_CHANNELS = ("email", "linkedin", "x", "blog", "landing_page")
 """The channels campaign assets are written for."""
@@ -31,7 +31,8 @@ people or text visible. Don't guess names, places or brands you can't read.
 DESCRIBE_SCHEMA = OutputSchema(
     name="image_description",
     schema=strict_object(
-        {"description": TEXT, "image_type": enum(*IMAGE_TYPES), "has_people": {"type": "boolean"}, "has_text": {"type": "boolean"}}
+        {"description": TEXT, "image_type": enum(*IMAGE_TYPES), "has_people": {"type": "boolean"},
+         "has_text": {"type": "boolean"}}
     ),
 )
 

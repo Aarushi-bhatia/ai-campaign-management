@@ -6,7 +6,13 @@ from sqlalchemy.orm import Session
 from app.ai.service import AiService
 from app.brand.images import channel_rules
 from app.brand.images.picking import (
-    RANK_SCHEMA, AssetSpec, ImageView, PickResult, checked_choice, rank_prompt, split,
+    RANK_SCHEMA,
+    AssetSpec,
+    ImageView,
+    PickResult,
+    checked_choice,
+    rank_prompt,
+    split,
 )
 from app.brand.models import Brand, BrandDecision, BrandFile, ImageInfo
 from app.config import ModelSize

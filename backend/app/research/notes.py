@@ -54,7 +54,8 @@ def research(
     skip_urls: frozenset[str] = frozenset(), off_limits: tuple[str, ...] = (),
 ) -> list[Finding]:
     found = web.search(query, RESULTS + len(skip_urls))
-    pages = [WebPage(p.url, p.title, _plain(p.text), p.date) for p in found if p.url not in skip_urls and p.text.strip()]
+    pages = [WebPage(p.url, p.title, _plain(p.text), p.date) for p in found
+             if p.url not in skip_urls and p.text.strip()]
     pages = pages[:RESULTS]
     if not pages:
         return []
@@ -65,7 +66,8 @@ def research(
     reply = ai.complete(
         step=f"Research notes: {query}"[:200],
         size=ModelSize.SMALL,
-        prompt=Prompt(fixed=INSTRUCTIONS, task=[Turn(role="user", content=f"Brand: {brand_name}\nSearch: {query}\n\n{listing}")]),
+        prompt=Prompt(fixed=INSTRUCTIONS,
+                      task=[Turn(role="user", content=f"Brand: {brand_name}\nSearch: {query}\n\n{listing}")]),
         output_schema=NOTES_SCHEMA,
         chat_id=chat_id,
         brand_id=brand_id,

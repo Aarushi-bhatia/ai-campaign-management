@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { AiCallSummary, Message, QuestionData } from "../api/types";
+import type { AiCallSummary, BrandSummary, Message, QuestionData } from "../api/types";
 import { formatCost, formatTokens } from "../format";
 import { QuestionCard } from "./chat/QuestionCard";
 import { useChatActions } from "./chat/useChatActions";
 
 type Props = {
   chatId: number | null;
-  brandId: number | null;
+  /** The brand a campaign started here uses (chosen in the sidebar). */
+  brand: BrandSummary | undefined;
   onChatCreated: (id: number) => void;
   onViewPrompt: (callId: number) => void;
 };
@@ -22,7 +23,7 @@ const PLACEHOLDERS: Record<string, string> = {
   done: "Ask for a change, e.g. shorten the second post, or use 'boundary' instead of 'guardrail' everywhere.",
 };
 
-export function ChatPanel({ chatId, brandId, onChatCreated, onViewPrompt }: Props) {
+export function ChatPanel({ chatId, brand, onChatCreated, onViewPrompt }: Props) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -55,7 +56,7 @@ export function ChatPanel({ chatId, brandId, onChatCreated, onViewPrompt }: Prop
   const send = useMutation({
     mutationFn: async (content: string) => {
       setSentTo(chatId);
-      const id = chatId ?? (await api.createChat(brandId ?? undefined)).id;
+      const id = chatId ?? (await api.createChat(brand?.id)).id;
       setSentTo(id);
       if (id !== chatId) onChatCreated(id);
       await api.sendMessage(id, content);
@@ -101,6 +102,13 @@ export function ChatPanel({ chatId, brandId, onChatCreated, onViewPrompt }: Prop
           <div className="mx-auto mt-24 max-w-md text-center text-stone-500">
             <p className="text-lg font-medium text-stone-800">Start a campaign</p>
             <p className="mt-1 text-sm">Paste a campaign brief below. The agent checks it against the brand, asks only what it needs, then proposes a plan.</p>
+            {brand && (
+              <p className="mt-3 text-sm text-stone-600">
+                {brand.status === "ready"
+                  ? <>This campaign will use <span className="font-medium text-stone-800">{brand.name}</span>. Switch brands at the bottom left.</>
+                  : <><span className="font-medium text-stone-800">{brand.name}</span> isn't ready yet{brand.status === "reading" ? ": it is still being read" : ""}. Switch brands at the bottom left.</>}
+              </p>
+            )}
           </div>
         )}
         <div className="mx-auto flex max-w-2xl flex-col gap-6">
@@ -267,7 +275,9 @@ function MessageItem({ message, call, openQuestionId, busy, onAnswer, onViewProm
             {message.content}
           </p>
           {(message.data as { undone?: boolean }).undone ? (
-            <p className="mt-2 text-xs text-stone-500">Undone: the assets are back.</p>
+            <p className="mt-2 text-xs text-stone-500">
+              Undone: {((message.data as { asset_ids?: number[] }).asset_ids?.length ?? 0) > 1 ? "they are back." : "it is back."}
+            </p>
           ) : (
             <button onClick={() => onBringBack(message.id)} className="mt-3 rounded-full border border-stone-200 bg-white px-3 py-1 text-xs font-medium text-stone-700 hover:bg-stone-100">
               Undo

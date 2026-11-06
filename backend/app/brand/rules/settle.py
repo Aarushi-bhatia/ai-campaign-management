@@ -6,10 +6,10 @@ Runs at the end of every read and straight after every correction, so correction
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.brand.rules import conflicts as conflict_rules
+from app.brand.models import Brand, BrandDecision, BrandFile, Conflict, DocLink, Fact
 from app.brand.reading import facts as fact_types
 from app.brand.reading import summary
-from app.brand.models import Brand, BrandDecision, BrandFile, Conflict, DocLink, Fact
+from app.brand.rules import conflicts as conflict_rules
 from app.brand.rules.status import DocView, LinkView, decide_statuses
 
 
@@ -24,9 +24,9 @@ def conflict_target(conflict: Conflict, facts: dict[int, Fact], paths: list[str]
 def chosen_winner(conflict: Conflict, facts: dict[int, Fact], paths: list[str],
                   decisions: dict[tuple[str, str], str]) -> tuple[str | None, list[str], str | None]:
     """The document the marketer chose to win this conflict, if any, the documents that joined it since the
-    choice, and the choice's name (for showing and undoing it). A choice is found by subject and points, so a document joining doesn't lose it. A choice saved
-    before points were part of the name ("subject | documents") still applies, as it did, to the same
-    documents."""
+    choice, and the choice's name (for showing and undoing it). A choice is found by subject and points, so a
+    document joining doesn't lose it. A choice saved before points were part of the name ("subject | documents")
+    still applies, as it did, to the same documents."""
     point = f"{_point_of(conflict, facts)} | "
     for (kind, target), value in reversed(decisions.items()):  # the newest choice first
         if kind == "conflict_winner" and target.startswith(point):
@@ -46,7 +46,8 @@ def same_conflict(target: str) -> str | None:
 
 
 def _point_of(conflict: Conflict, facts: dict[int, Fact]) -> str:
-    points = sorted({" ".join(facts[i].attribute.lower().replace("|", " ").split()) for i in conflict.fact_ids if i in facts})
+    points = sorted({" ".join(facts[i].attribute.lower().replace("|", " ").split())
+                     for i in conflict.fact_ids if i in facts})
     return f"{conflict.subject_key} | {' + '.join(points)}"
 
 
@@ -169,7 +170,8 @@ def _judge(
     if chosen:
         since = f" Since then, {', '.join(joined)} joined this disagreement; choose again if that changes things." \
             if joined else ""
-        conflict.winner_file_id, conflict.rule, conflict.reason = chosen.file_id, "you", f"You chose this on the Brand page.{since}"
+        conflict.winner_file_id, conflict.rule, conflict.reason = (chosen.file_id, "you",
+                                                                   f"You chose this on the Brand page.{since}")
         return
     verdict = conflict_rules.pick_winner(
         candidates, conflict.owner_file_ids, conflict.topic, replaces, outranked, outranking, sides,

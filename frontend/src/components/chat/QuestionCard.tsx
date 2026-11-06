@@ -39,6 +39,10 @@ export function QuestionCard({ question, open, busy, onAnswer }: Props) {
         <p className="mt-3 text-stone-500">
           Answered: <span className="font-medium text-stone-800">{question.answer}</span>
         </p>
+      ) : question.asked_again ? (
+        <p className="mt-3 text-stone-500">
+          “{question.asked_again}” wasn't a clear yes or no, so this is asked again below.
+        </p>
       ) : question.expired ? (
         <p className="mt-3 text-stone-500">No longer needed: the plan was approved before this was answered.</p>
       ) : (

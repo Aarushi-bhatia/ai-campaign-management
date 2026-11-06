@@ -47,7 +47,8 @@ class Turn:
             return {"role": self.role, "content": self.content}
         parts: list[dict[str, Any]] = [{"type": "input_text", "text": self.content}]
         parts += [
-            {"type": "input_image", "image_url": f"<image: {image.label}>" if for_log else image.data_url, "detail": "low"}
+            {"type": "input_image", "image_url": f"<image: {image.label}>" if for_log else image.data_url,
+             "detail": "low"}
             for image in self.images
         ]
         return {"role": self.role, "content": parts}

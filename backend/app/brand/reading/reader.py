@@ -28,10 +28,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.ai.service import AiCallFailed, AiService
 from app.ai.transport import AiTransport
-from app.brand.reading import cards, facts, links, names, parsing, summary
-from app.brand.rules import conflicts
 from app.brand.images.reading import ImageSteps
 from app.brand.models import Brand, BrandFile, Conflict, DocLink, Entity, Fact, Section
+from app.brand.reading import cards, facts, links, names, parsing, summary
+from app.brand.rules import conflicts
 from app.brand.rules.settle import settle, summary_source
 from app.config import ModelSize, Settings
 from app.db import utc_now

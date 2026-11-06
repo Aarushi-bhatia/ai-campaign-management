@@ -74,7 +74,8 @@ class AssetSpec:
     excluded_types: frozenset[str] = frozenset()
     """Image types the campaign's brief rules out, from its plan."""
     used_paths: frozenset[str] = frozenset()
-    """Images other assets of the campaign already use. Not blocked: the ranking prefers others when they fit as well."""
+    """Images other assets of the campaign already use. Not blocked: the ranking prefers others when they fit as
+    well."""
     recent_paths: frozenset[str] = frozenset()
     """Images the brand's recent campaigns used, treated the same way, so campaigns don't repeat each other."""
     memory: tuple[str, ...] = ()

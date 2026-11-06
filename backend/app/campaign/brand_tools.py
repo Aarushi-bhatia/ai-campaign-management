@@ -13,10 +13,10 @@ from sqlalchemy.orm import Session
 
 from app.ai.prompt import TEXT, strict_object
 from app.ai.service import AiService, Tool
-from app.brand.reading import facts as fact_types
-from app.brand.reading import names
 from app.brand.images.library import rules_for
 from app.brand.models import Brand, BrandFile, Conflict, Entity, Fact, Section
+from app.brand.reading import facts as fact_types
+from app.brand.reading import names
 from app.brand.rules.settle import winning_fact_ids
 
 SEARCH_RESULTS = 6
@@ -200,7 +200,8 @@ def _channel_score(channel: str, words: tuple[str, ...], fact, doc) -> int:
     path = doc.path.lower()
     about = f"{fact.subject} {fact.attribute} {fact.scope}".lower()
     in_path = any(word in path for word in words) or (channel == "x" and "x-" in path.rsplit("/", 1)[-1])
-    in_scope = any(word in fact.scope.lower() for word in words) or (channel == "x" and fact.scope.strip().lower() == "x")
+    in_scope = (any(word in fact.scope.lower() for word in words)
+                or (channel == "x" and fact.scope.strip().lower() == "x"))
     in_about = any(word in about for word in words)
     if not (in_path or in_scope or in_about):
         return 0

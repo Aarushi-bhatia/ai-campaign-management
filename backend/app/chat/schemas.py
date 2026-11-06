@@ -37,6 +37,9 @@ class ChatSummary(BaseModel):
     id: int
     title: str
     created_at: datetime
+    brand_id: int | None = None
+    """The brand the chat's campaign uses. A chat from before campaigns shows with the brand it gets when opened;
+    None only when there is no brand at all."""
 
 
 class ChatOut(ChatSummary):

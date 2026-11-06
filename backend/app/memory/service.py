@@ -14,13 +14,13 @@ import re
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.ai.prompt import TEXT, OutputSchema, Prompt, Turn, array_of, enum, strict_object
 from app.ai.service import AiService
-from app.brand.rules.evidence import normalize
 from app.brand.models import Brand
+from app.brand.rules.evidence import normalize
 from app.campaign.models import Campaign
 from app.chat.models import Chat, Message
 from app.config import ModelSize
@@ -190,7 +190,8 @@ def undo_remembered(session: Session, note: Message) -> None:
             raise MemoryFull(f"Memory has filled up again since, so the {len(back)} dropped item"
                              f"{'s' if len(back) > 1 else ''} can't come back. Unpin or delete an item to make room.")
         session.add_all(MemoryItem(id=d["id"], brand_id=brand_id, text=d["text"], kind=d["kind"], pinned=d["pinned"],
-                                   source_chat_id=d["source_chat_id"], created_at=datetime.fromisoformat(d["created_at"]))
+                                   source_chat_id=d["source_chat_id"],
+                                   created_at=datetime.fromisoformat(d["created_at"]))
                         for d in back)
     note.data = {**data, "undone": True}
     session.commit()
@@ -206,8 +207,8 @@ def replace_changed(session: Session, note: Message) -> None:
     old = session.get(MemoryItem, changes["id"])
     if old is None:
         raise MemoryChanged("That older item is no longer in memory.")
-    kept = {"id": old.id, "text": old.text, "kind": old.kind, "pinned": old.pinned, "source_chat_id": old.source_chat_id,
-            "created_at": old.created_at.isoformat()}
+    kept = {"id": old.id, "text": old.text, "kind": old.kind, "pinned": old.pinned,
+            "source_chat_id": old.source_chat_id, "created_at": old.created_at.isoformat()}
     session.delete(old)
     note.data = {**data, "replaced": True, "dropped": [*data.get("dropped", []), kept]}
     session.commit()
@@ -248,7 +249,8 @@ class Memory:
         item.dropped = [d["text"] for d in item.dropped_items]
         gone = {d["id"] for d in item.dropped_items}
         # The item it changes, for the note's "Replace it"; none when that one was just dropped to make room.
-        item.changes = {"id": changed.id, "text": changed.text} if changed is not None and changed.id not in gone else None
+        item.changes = ({"id": changed.id, "text": changed.text} if changed is not None and changed.id not in gone
+                        else None)
         self._session.commit()
         return item
 
@@ -270,7 +272,8 @@ class Memory:
         reply = self._ai.complete(
             step="Memory", size=ModelSize.SMALL, output_schema=SUGGEST_SCHEMA, chat_id=chat.id, brand_id=brand.id,
             prompt=Prompt(fixed=SUGGEST_INSTRUCTIONS.format(summary=brand.summary or "(none)"),
-                          task=[Turn(role="user", content=f"=== MEMORY ===\n{known}\n\n=== NEW MESSAGES ===\n{messages}")]),
+                          task=[Turn(role="user",
+                                     content=f"=== MEMORY ===\n{known}\n\n=== NEW MESSAGES ===\n{messages}")]),
             cache_key=f"brand-{brand.id}",
         )
         saved = []

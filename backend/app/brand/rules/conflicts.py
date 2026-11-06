@@ -165,6 +165,10 @@ class Verdict:
     reason: str
 
 
+Rule = tuple[str, Callable[[], list[Candidate]], Callable[[Candidate, list[Candidate]], str]]
+"""A rule's name, how it narrows the field, and how it explains a win."""
+
+
 def pick_winner(
     candidates: list[Candidate],
     owner_ids: list[int],
@@ -180,71 +184,87 @@ def pick_winner(
     `outranking` and `outranked` are documents that another document ranks above or below the rest.
     `side_of` says which side each document takes; without it, every document is its own side.
     """
-    remaining = list(candidates)
-    by_id = {c.file_id: c for c in candidates}
+    contest = _Contest(candidates, owner_ids, topic, replaces, outranked, outranking)
     side = side_of or {c.file_id: c.file_id for c in candidates}
+    for rule, apply, explain in contest.rules():
+        before = contest.remaining
+        contest.remaining = apply()
+        if len({side[c.file_id] for c in contest.remaining}) == 1:
+            winner = contest.remaining[0]
+            losers = [c for c in before if side[c.file_id] != side[winner.file_id]]
+            return Verdict(winner.file_id, rule, explain(winner, losers))
+    tied = ", ".join(c.path for c in contest.remaining)
+    return Verdict(None, "needs_human", f"The rules can't choose between {tied}. Pick one on the Brand page.")
 
-    def narrow(keep: Callable[[Candidate], bool]) -> list[Candidate]:
-        kept = [c for c in remaining if keep(c)]
-        return kept if kept else remaining
 
-    def not_replaced(c: Candidate) -> bool:
-        return c.status != "replaced" and not any((other.file_id, c.file_id) in replaces for other in remaining)
+class _Contest:
+    """The documents still in the running, and the rules that narrow them, in order."""
 
-    def in_charge(c: Candidate) -> bool:
+    def __init__(self, candidates: list[Candidate], owner_ids: list[int], topic: str,
+                 replaces: set[tuple[int, int]], outranked: set[int], outranking: set[int]) -> None:
+        self.remaining = list(candidates)
+        self._owner_ids = owner_ids
+        self._topic = topic
+        self._replaces = replaces
+        self._outranked = outranked
+        self._outranking = outranking
+
+    def rules(self) -> list[Rule]:
+        return [
+            ("replaces", lambda: self._narrow(self._not_replaced), self._explain_replaced),
+            ("owner", self._owners, self._explain_owner),
+            (
+                "approved",
+                lambda: self._narrow(lambda c: c.status != "draft"),
+                lambda w, losers: f"{w.path} is approved; {_names(losers)} {_is(losers)} a draft.",
+            ),
+            (
+                "newer",
+                lambda: _newest(self.remaining),
+                lambda w, losers: f"{w.path} ({w.date}) is newer than {_names(losers, dated=True)}.",
+            ),
+            (
+                "live",
+                lambda: self._narrow(lambda c: c.status not in ("archived", "replaced")),
+                lambda w, losers: f"{w.path} is live; {_names(losers)} {_is(losers)} archived or replaced.",
+            ),
+        ]
+
+    def _narrow(self, keep: Callable[[Candidate], bool]) -> list[Candidate]:
+        """The documents that pass `keep`; all of them when none does, so a rule never empties the field."""
+        kept = [c for c in self.remaining if keep(c)]
+        return kept if kept else self.remaining
+
+    def _not_replaced(self, c: Candidate) -> bool:
+        return c.status != "replaced" and not any((other.file_id, c.file_id) in self._replaces
+                                                  for other in self.remaining)
+
+    def _in_charge(self, c: Candidate) -> bool:
         # An internal document is never in charge of what is said in public, even when it is the only one named.
-        return not c.internal and (c.file_id in owner_ids or c.file_id in outranking) and c.file_id not in outranked
+        return (not c.internal and (c.file_id in self._owner_ids or c.file_id in self._outranking)
+                and c.file_id not in self._outranked)
 
-    def explain_replaced(w: Candidate, losers: list[Candidate]) -> str:
-        if all((w.file_id, c.file_id) in replaces for c in losers):
-            return f"{w.path} replaces {_names(losers)}."
-        return f"{_names(losers)} {_has(losers)} been replaced; {w.path} has not."
-
-    def owner_step() -> list[Candidate]:
-        field = remaining
-        if any(in_charge(c) for c in field):
-            field = [c for c in field if in_charge(c)]
+    def _owners(self) -> list[Candidate]:
+        field = self.remaining
+        if any(self._in_charge(c) for c in field):
+            field = [c for c in field if self._in_charge(c)]
         public = [c for c in field if not c.internal]
         return public or field
 
-    def explain_owner(w: Candidate, losers: list[Candidate]) -> str:
+    def _explain_replaced(self, w: Candidate, losers: list[Candidate]) -> str:
+        if all((w.file_id, c.file_id) in self._replaces for c in losers):
+            return f"{w.path} replaces {_names(losers)}."
+        return f"{_names(losers)} {_has(losers)} been replaced; {w.path} has not."
+
+    def _explain_owner(self, w: Candidate, losers: list[Candidate]) -> str:
         internal = [c for c in losers if c.internal]
         others = [c for c in losers if not c.internal]
-        parts = [f"{w.path} is in charge of {topic or 'this topic'}"] if in_charge(w) else []
+        parts = [f"{w.path} is in charge of {self._topic or 'this topic'}"] if self._in_charge(w) else []
         if others:
             parts.append(f"{_names(others)} {_is(others)} not")
         if internal:
             parts.append(f"{_names(internal)} {_is(internal)} internal, so not in charge of what is said in public")
         return "; ".join(parts) + "."
-
-    steps: list[tuple[str, Callable[[], list[Candidate]], Callable[[Candidate, list[Candidate]], str]]] = [
-        ("replaces", lambda: narrow(not_replaced), explain_replaced),
-        ("owner", owner_step, explain_owner),
-        (
-            "approved",
-            lambda: narrow(lambda c: c.status != "draft"),
-            lambda w, losers: f"{w.path} is approved; {_names(losers)} {_is(losers)} a draft.",
-        ),
-        (
-            "newer",
-            lambda: _newest(remaining),
-            lambda w, losers: f"{w.path} ({w.date}) is newer than {_names(losers, dated=True)}.",
-        ),
-        (
-            "live",
-            lambda: narrow(lambda c: c.status not in ("archived", "replaced")),
-            lambda w, losers: f"{w.path} is live; {_names(losers)} {_is(losers)} archived or replaced.",
-        ),
-    ]
-    for rule, apply, explain in steps:
-        before = remaining
-        remaining = apply()
-        if len({side[c.file_id] for c in remaining}) == 1:
-            winner = remaining[0]
-            losers = [c for c in before if side[c.file_id] != side[winner.file_id]]
-            return Verdict(winner.file_id, rule, explain(winner, losers))
-    tied = ", ".join(by_id[c.file_id].path for c in remaining)
-    return Verdict(None, "needs_human", f"The rules can't choose between {tied}. Pick one on the Brand page.")
 
 
 def _newest(remaining: list[Candidate]) -> list[Candidate]:

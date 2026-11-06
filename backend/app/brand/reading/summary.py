@@ -46,7 +46,8 @@ def source_text(brand_name: str, facts: list[SummaryFact]) -> str:
     blocks = []
     for subject in sorted(by_subject, key=lambda s: (-len(by_subject[s]), s.lower())):
         lines = [
-            f"- [{f.kind}] {f.attribute}: {f.value}" + (f" (only for {f.scope})" if f.scope else "") + f" [{f.doc_path}]"
+            f"- [{f.kind}] {f.attribute}: {f.value}" + (f" (only for {f.scope})" if f.scope else "")
+            + f" [{f.doc_path}]"
             for f in sorted(by_subject[subject], key=lambda f: (f.attribute, f.value))
         ]
         blocks.append(f"## {subject}\n" + "\n".join(lines))

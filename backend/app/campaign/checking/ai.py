@@ -20,7 +20,8 @@ facts, rules and approved web research the writer was given for this piece.
 
 Flag only real problems:
 - claim: a statement about the brand, its products, customers, numbers, certifications or results that \
-none of the summary, the approved campaign, the facts or the approved research support, or that goes beyond what they say. \
+none of the summary, the approved campaign, the facts or the approved research support, or that goes \
+beyond what they say. \
 Also any quote or customer story not in them, and anything from background-only material. Copy that \
 follows the brief or a campaign rule is supported, even where an older brand document says otherwise.
 - tone: a clear break from the brand's voice and word rules in the summary.

@@ -4,6 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.ai.fake import FakeTransport
+from app.chat.models import Chat
+from app.db import SessionLocal
 from tests import brand_brain
 
 CLEAR_BRIEF = "Launch Acme Widget to platform leads on January 26. One email, one LinkedIn post, one X post."
@@ -176,6 +178,72 @@ def test_a_brief_override_answered_no_leaves_the_brand_rule(client: TestClient):
     assert _campaign(client, chat_id)["brief_rules"] == []
 
 
+@pytest.mark.parametrize("typed, rules, recorded", [
+    ("yes", ["The early access label comes off for these assets only."], "Yes, for this campaign only"),
+    ("Yes please, allow it", ["The early access label comes off for these assets only."], "Yes, for this campaign only"),
+    ("no", [], "No, keep the brand rule"),
+    ("Keep the rule.", [], "No, keep the brand rule"),
+])
+def test_a_typed_yes_or_no_to_a_brief_override_counts_like_the_buttons(client: TestClient, typed: str,
+                                                                        rules: list[str], recorded: str):
+    """A typed "yes" used to be kept as the answer, so the planner saw a yes, but the rule was never applied."""
+    _brand(client)
+    chat_id = _chat(client)
+    _send(client, chat_id, f"{CLEAR_BRIEF} The early access label comes off.")
+
+    _send(client, chat_id, typed)
+
+    assert _campaign(client, chat_id)["brief_rules"] == rules
+    card = next(m for m in client.get(f"/api/chats/{chat_id}").json()["messages"] if m["kind"] == "question")
+    assert card["data"]["answer"] == recorded  # what the planner is shown matches what counts
+
+
+def test_a_typed_yes_in_the_answer_box_counts_too(client: TestClient):
+    _brand(client)
+    chat_id = _chat(client)
+    card = _send(client, chat_id, f"{CLEAR_BRIEF} The early access label comes off.")[-1]
+
+    client.post(f"/api/chats/{chat_id}/answer", json={"question_id": card["data"]["id"], "answer": "Yes"})
+
+    assert _campaign(client, chat_id)["brief_rules"] == ["The early access label comes off for these assets only."]
+    messages = client.get(f"/api/chats/{chat_id}").json()["messages"]
+    said = [m["content"] for m in messages if m["role"] == "user"]
+    assert said[-1] == "Yes"  # what was typed, not the option it counted as; the card shows that
+    assert next(m for m in messages if m["kind"] == "question")["data"]["answer"] == "Yes, for this campaign only"
+
+
+def test_a_clicked_option_shows_its_label(client: TestClient):
+    _brand(client)
+    chat_id = _chat(client)
+    card = _send(client, chat_id, f"{CLEAR_BRIEF} The early access label comes off.")[-1]
+
+    client.post(f"/api/chats/{chat_id}/answer", json={"question_id": card["data"]["id"], "answer": "keep"})
+
+    said = [m["content"] for m in client.get(f"/api/chats/{chat_id}").json()["messages"] if m["role"] == "user"]
+    assert said[-1] == "No, keep the brand rule"
+
+
+def test_an_unclear_answer_to_a_brief_override_asks_again(client: TestClient):
+    _brand(client)
+    chat_id = _chat(client)
+    _send(client, chat_id, f"{CLEAR_BRIEF} The early access label comes off.")
+
+    new = _send(client, chat_id, "Maybe, not sure yet")
+
+    campaign = _campaign(client, chat_id)
+    assert campaign["stage"] == "asking" and campaign["brief_rules"] == []
+    assert "yes or no" in new[-2]["content"] and new[-1]["kind"] == "question"
+    assert not new[-1]["data"]["answer"]  # still open
+
+    _send(client, chat_id, "yes")
+    assert _campaign(client, chat_id)["brief_rules"] == ["The early access label comes off for these assets only."]
+    first, again = [m["data"] for m in client.get(f"/api/chats/{chat_id}").json()["messages"]
+                    if m["kind"] == "question"][:2]
+    # The card above the unclear answer says it was asked again; only the one below takes the yes.
+    assert (first["asked_again"], first["answer"]) == ("Maybe, not sure yet", None)
+    assert again["answer"] == "Yes, for this campaign only" and "asked_again" not in again
+
+
 def test_a_campaign_rule_can_be_dropped_on_the_plan(client: TestClient):
     _brand(client)
     chat_id = _chat(client)
@@ -338,3 +406,29 @@ def test_a_new_chat_can_name_its_brand(client: TestClient):
 
     assert chosen["campaign"]["brand_id"] == first  # was always the newest brand
     assert default["campaign"]["brand_id"] != first
+
+
+def test_the_chat_list_says_which_brand_each_chat_uses(client: TestClient):
+    first, second = _brand(client), _brand(client)
+    for brand_id in (first, second, first):
+        assert client.post("/api/chats", json={"brand_id": brand_id}).status_code == 201
+
+    listed = client.get("/api/chats").json()
+
+    assert [c["brand_id"] for c in listed] == [first, second, first]  # newest first
+    assert client.get(f"/api/chats/{listed[1]['id']}").json()["brand_id"] == second
+
+
+def test_a_chat_from_before_campaigns_keeps_the_brand_of_its_time(client: TestClient):
+    """It used to get the newest brand when first opened, so adding a brand moved old chats into its list."""
+    first = _brand(client)
+    with SessionLocal() as session:
+        old = Chat(title="hello")
+        session.add(old)
+        session.commit()
+        old_id = old.id
+    _brand(client)  # added after the chat
+
+    assert next(c for c in client.get("/api/chats").json() if c["id"] == old_id)["brand_id"] == first  # listed
+    assert client.get(f"/api/chats/{old_id}").json()["brand_id"] == first  # and given it when opened
+    assert next(c for c in client.get("/api/chats").json() if c["id"] == old_id)["brand_id"] == first

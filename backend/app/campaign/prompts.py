@@ -179,7 +179,8 @@ def campaign_part(campaign: Campaign) -> str:
     if answered:
         lines.append("=== ANSWERS ===\n" + "\n".join(f"Q: {q['question']}\nA: {q['answer']}" for q in answered))
     if campaign.brief_rules:
-        lines.append("=== THIS CAMPAIGN OVERRIDES THE BRAND ON ===\n" + "\n".join(f"- {r}" for r in campaign.brief_rules))
+        lines.append("=== THIS CAMPAIGN OVERRIDES THE BRAND ON ===\n"
+                     + "\n".join(f"- {r}" for r in campaign.brief_rules))
     return "\n\n".join(lines)
 
 

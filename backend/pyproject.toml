@@ -21,6 +21,7 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "httpx>=0.28",
+    "ruff>=0.17.3",
 ]
 
 [tool.pytest.ini_options]
@@ -29,3 +30,24 @@ pythonpath = ["."]
 
 [tool.uv]
 package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, import order, bugbear, pyupgrade, simplify, ruff's own rules, complexity.
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "C90"]
+ignore = [
+    "RUF001",  # Curly quotes and dashes in strings are on purpose: the app shows and matches typographic text.
+    "RUF002",
+    "RUF003",
+    "RUF005",  # `messages + [note]` reads as plainly as unpacking.
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test names and sample brand text are long by nature; the fake AIs are long lists of canned answers.
+"tests/*" = ["E501", "C901"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10

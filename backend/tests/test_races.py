@@ -104,7 +104,7 @@ def test_a_second_approve_of_the_same_plan_is_refused(client: TestClient, fake_a
 
         assert seen.stage == "plan_ready"
         with pytest.raises(WrongStage):
-            stale.approve(chat)  # still sees "plan ready" in its copy
+            stale.plans.approve(chat)  # still sees "plan ready" in its copy
     finally:
         session.close()
 
@@ -133,7 +133,7 @@ def test_a_second_write_again_is_refused(client: TestClient, fake_ai: FakeTransp
 
         assert seen.stage == "done" and {a.state for a in seen.assets} == {"failed"}
         with pytest.raises(WrongStage):
-            stale.begin_writing(chat)  # still sees "done" with failed assets in its copy
+            stale.plans.begin_writing(chat)  # still sees "done" with failed assets in its copy
     finally:
         session.close()
 
@@ -307,7 +307,8 @@ def test_two_answers_to_the_same_question_at_once_make_one_plan(client: TestClie
         mark(self, *args)
 
     monkeypatch.setattr(CampaignService, "_mark_card_answered", slow_mark)
-    answer = lambda: client.post(f"/api/chats/{chat_id}/answer", json={"question_id": 1, "answer": "Q1"}).status_code
+    def answer():
+        return client.post(f"/api/chats/{chat_id}/answer", json={"question_id": 1, "answer": "Q1"}).status_code
     with ThreadPoolExecutor(2) as pool:
         first = pool.submit(answer)
         time.sleep(0.1)

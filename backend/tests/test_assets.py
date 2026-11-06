@@ -1,34 +1,32 @@
 """Writing, checking and editing assets after approval, through the chat API with a fake AI."""
 
 import json
+import time
 from collections.abc import Callable
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
-
-import time
-from types import SimpleNamespace
-
 from sqlalchemy import func, select
 
 from app.ai.fake import FakeTransport
-from app.ai.transport import AiRequest
 from app.ai.models import AiCall
 from app.ai.prompt import Prompt, Turn
+from app.ai.transport import AiRequest
 from app.brand.images.picking import AssetSpec, Choice, PickResult, rank_prompt
-from app.campaign.writing import assets as assets_module
+from app.brand.models import Conflict
+from app.campaign import agent, editing
 from app.campaign.brand_tools import CHANNEL_WORDS, _channel_score
+from app.campaign.checking import ai as checker
+from app.campaign.checking.free import CheckRules, free_checks
+from app.campaign.models import Asset, Campaign
 from app.campaign.runtime import Runtime
+from app.campaign.writing import assets as assets_module
+from app.campaign.writing import writer
 from app.campaign.writing.queue import resume_interrupted
 from app.config import ModelSize, Settings
 from app.db import SessionLocal
 from app.jobs import InlineJobRunner
-from app.brand.models import Conflict
-from app.campaign import agent, editing
-from app.campaign.checking import ai as checker
-from app.campaign.writing import writer
-from app.campaign.checking.free import CheckRules, free_checks
-from app.campaign.models import Asset, Campaign
 from app.research.client import FakeWebResearch, WebPage
 from tests import brand_brain
 
@@ -221,7 +219,7 @@ def test_assets_written_at_the_same_time_get_different_images(client: TestClient
 
     assert sorted(a["image"]["path"] for a in _assets(client, chat_id)) == ["photos/a.jpg", "photos/b.jpg", "photos/c.jpg"]
     # the two written together ranked at the same time: no lock is held while the AI ranks
-    (_, _), (start_2, end_2), (start_3, end_3) = sorted(ranked)
+    (_, _), (_, end_2), (start_3, _) = sorted(ranked)
     assert start_3 < end_2
     with SessionLocal() as session:
         assert session.scalar(select(func.count()).select_from(AiCall).where(AiCall.step.like("Image choice asset %"))) == 3
@@ -254,6 +252,29 @@ def test_an_image_can_be_changed_by_chat_and_undone(client: TestClient, brand: i
 
     client.post(f"/api/chats/{chat_id}/assets/{after[1]['id']}/undo")
     assert _assets(client, chat_id)[1]["image"] == old_image  # each version keeps its image
+
+
+def test_undo_takes_off_an_image_that_a_chat_change_added(client: TestClient, brand: int,
+                                                          monkeypatch: pytest.MonkeyPatch):
+    """A version saved with no image (here a hand edit after the image was taken off) keeps "no image": Undo
+    after a chat change added one takes it off again. "No image" used to read as "not recorded", so Undo kept
+    the image the chat had added."""
+    monkeypatch.setattr(assets_module.library, "pick", lambda session, ai, brand, spec, chat_id=None, step=None:
+                        PickResult(choices=[Choice("photos/new.jpg", "Shows the team.", "Two engineers.")])
+                        if step.startswith("Image change")
+                        else PickResult(choices=[Choice(f"photos/{n}.jpg", "Fits.", "A photo.") for n in "abc"]))
+    chat_id = _written(client)
+    _send(client, chat_id, "No image on the second post")
+    asset = _assets(client, chat_id)[1]
+    content = {**asset["content"], "text": asset["content"]["text"] + " Typed by hand."}
+    assert client.put(f"/api/chats/{chat_id}/assets/{asset['id']}", json={"content": content}).status_code == 200
+
+    _send(client, chat_id, "Use another image for the second post")
+    assert _assets(client, chat_id)[1]["image"]["path"] == "photos/new.jpg"
+
+    client.post(f"/api/chats/{chat_id}/assets/{asset['id']}/undo")
+    undone = _assets(client, chat_id)[1]
+    assert undone["image"] is None and undone["content"] == content
 
 
 def test_an_image_change_that_finds_nothing_says_so_and_changes_nothing(client: TestClient, brand: int,
@@ -306,7 +327,8 @@ def test_view_prompt_shows_exactly_what_was_sent(client: TestClient, brand: int,
     sent = [r.to_payload() for r in fake_ai.requests[sent_before:]]
     with SessionLocal() as session:
         logged = [c.request for c in session.scalars(select(AiCall).where(AiCall.id > before, AiCall.step != "Brand search"))]
-    key = lambda payload: json.dumps(payload, sort_keys=True)
+    def key(payload):
+        return json.dumps(payload, sort_keys=True)
     assert len(sent) > 10 and sorted(map(key, logged)) == sorted(map(key, sent))
 
 
@@ -466,7 +488,52 @@ def test_the_which_asset_question_offers_every_asset():
 
     route = editing.route_from(unclear, assets)
 
-    assert route.ask["options"] == [f"{n}. Post {n}" for n in range(1, 7)]  # was the first 4 only
+    assert route.ask["options"] == [f"{n}. X post “Post {n}”" for n in range(1, 7)]  # was the first 4 only
+
+
+def test_a_which_asset_question_from_the_ai_offers_every_asset_by_number_and_type():
+    """The AI used to write its own choices, such as "Blog post or landing page", or "X post" with two of them."""
+    assets = [Asset(type="x_post", title="First", position=0), Asset(type="blog_post", title="Walkthrough", position=1),
+              Asset(type="landing_page", title="Demo", position=2), Asset(type="x_post", title="Second", position=3)]
+    unclear = {"action": "ask", "targets": [], "instruction": "", "research_query": "", "reply": "",
+               "ask": {"question": "Which asset should I improve?", "options": []}, "new_assets": []}
+
+    route = editing.route_from(unclear, assets)
+
+    assert route.ask["question"] == "Which asset should I improve?"
+    assert route.ask["options"] == ["1. X post “First”", "2. Blog post “Walkthrough”", "3. Landing page “Demo”",
+                                    "4. X post “Second”"]
+
+
+def test_a_which_asset_question_offers_only_the_assets_the_message_could_mean():
+    """"Shorten the LinkedIn post" with two of them used to list every asset, emails and X posts too."""
+    assets = [Asset(id=n + 1, type=kind, title=title, position=n) for n, (kind, title) in enumerate(
+        [("email", "Launch email"), ("linkedin_post", "First"), ("x_post", "Short"), ("linkedin_post", "Second")])]
+    unclear = {"action": "ask", "targets": [{"asset": 2, "field": ""}, {"asset": 4, "field": ""}], "instruction": "",
+               "research_query": "", "reply": "",
+               "ask": {"question": "Which LinkedIn post should I shorten?", "options": []}, "new_assets": []}
+    one = {**unclear, "targets": [{"asset": 2, "field": ""}]}
+
+    route = editing.route_from(unclear, assets)
+
+    assert route.ask["question"] == "Which LinkedIn post should I shorten?"
+    assert route.ask["options"] == ["2. LinkedIn post “First”", "4. LinkedIn post “Second”"]
+    assert len(editing.route_from(one, assets).ask["options"]) == 4  # one candidate is no choice: every asset
+
+
+def test_the_ai_sees_each_assets_sizes_so_a_limit_already_met_needs_no_edit():
+    """"Keep X posts under 200 characters", sent twice, used to rewrite posts already within it."""
+    post = Asset(id=1, type="x_post", title="Short", position=0,
+                 content={"author": "Wickhold", "text": "Contain first.", "hashtags": [], "link_url": "https://w.example"})
+    email = Asset(id=2, type="email", title="Launch", position=1,
+                  content={"subject": "Hello there", "sections": [{"heading": "Hi", "body": "One two three."},
+                                                                  {"heading": "Bye", "body": "Four five."}]})
+
+    text = editing.assets_text([post, email])
+
+    assert "sizes: author 8 characters, 1 words; text 14 characters, 2 words)" in text  # no link
+    assert "subject 11 characters, 2 words" in text and "body 24 characters, 5 words" in text  # sections added up
+    assert "already does what it asks" in editing.ROUTE_TASK
 
 
 def test_the_which_asset_card_in_the_chat_lists_every_asset(client: TestClient, brand: int):
@@ -476,7 +543,8 @@ def test_the_which_asset_card_in_the_chat_lists_every_asset(client: TestClient, 
 
     assert card["kind"] == "question"
     assert [o["label"] for o in card["data"]["options"]] == [
-        "1. Launch email", "2. Launch post", "3. X launch post", "4. Launch blog", "5. Launch page"]  # was cut to 4
+        "1. Email “Meet Acme Widget”", "2. LinkedIn post “Launch post”", "3. X post “X launch post”",
+        "4. Blog post “Acme Widget”", "5. Landing page “Launch page”"]  # was cut to 4
 
 
 def test_a_citation_not_in_the_approved_research_is_a_warning(client: TestClient, brand: int):
@@ -630,7 +698,8 @@ def test_view_prompt_on_an_asset_opens_the_call_that_wrote_its_current_text(clie
     """It used to open the first draft's call even after a chat edit had rewritten the asset."""
     chat_id = _written(client)
     first = _assets(client, chat_id)[1]
-    calls = lambda: {c["id"]: c["step"] for c in client.get("/api/ai-calls", params={"chat_id": chat_id}).json()}
+    def calls():
+        return {c["id"]: c["step"] for c in client.get("/api/ai-calls", params={"chat_id": chat_id}).json()}
     assert calls()[first["prompt_call_id"]].startswith("Write asset") and not first["hand_edited"]
 
     _send(client, chat_id, "Shorten the second post")
@@ -657,6 +726,8 @@ def test_a_chat_edit_that_changes_nothing_makes_no_new_version(client: TestClien
     versions = client.get(f"/api/chats/{chat_id}/assets/{linkedin['id']}/versions").json()
     assert [v["reason"] for v in versions] == ["written"]
     assert "not changed, so no new version" in reply["content"]
+    # The AI writes its first line before the edit runs; when nothing was saved, it would claim too much.
+    assert reply["content"].startswith("Here's what happened:")
 
 
 def test_new_assets_can_be_added_after_writing(client: TestClient, brand: int):
@@ -787,7 +858,8 @@ def test_an_edit_with_no_clear_target_never_offers_a_single_choice():
     choice = editing.route_from(unclear, two)
 
     assert alone.action == "answer" and "What the default policy does" in alone.reply
-    assert choice.action == "ask" and choice.ask["options"] == ["1. What the default policy does", "2. Launch email"]
+    assert choice.action == "ask" and choice.ask["options"] == ["1. X post “What the default policy does”",
+                                                          "2. Email “Launch email”"]
 
 
 def test_a_hand_edit_runs_free_checks_and_costs_nothing(client: TestClient, brand: int):
@@ -805,6 +877,20 @@ def test_a_hand_edit_runs_free_checks_and_costs_nothing(client: TestClient, bran
     assert len(client.get("/api/ai-calls", params={"chat_id": chat_id}).json()) == calls_before
     versions = client.get(f"/api/chats/{chat_id}/assets/{linkedin['id']}/versions").json()
     assert (versions[-1]["reason"], versions[-1]["cost_usd"]) == ("hand edit", 0)
+
+
+def test_an_email_is_called_by_its_current_subject(client: TestClient, brand: int):
+    """A new subject used to leave the old one at the top of the asset, in the notes and in "Which asset?"."""
+    chat_id = _written(client)
+    email = _assets(client, chat_id)[0]
+    old = email["title"]
+    url = f"/api/chats/{chat_id}/assets/{email['id']}"
+
+    renamed = client.put(url, json={"content": {**email["content"], "subject": "A shorter subject"}}).json()["asset"]
+    undone = client.post(f"{url}/undo").json()
+
+    assert renamed["title"] == "A shorter subject"
+    assert undone["title"] == old == email["content"]["subject"]
 
 
 def test_the_same_hand_fix_in_two_campaigns_offers_to_remember_it(client: TestClient, brand: int):
@@ -1023,7 +1109,7 @@ def test_a_wide_edit_lists_every_asset_even_when_one_edit_fails(client: TestClie
     lines = edit["content"].splitlines()[1:4]
     assert "Made it shorter" in lines[0] and "couldn't be edited" in lines[1] and "Made it shorter" in lines[2]
     after = _assets(client, chat_id)
-    assert [a["version"] - b["version"] for a, b in zip(after, before)] == [1, 0, 1]
+    assert [a["version"] - b["version"] for a, b in zip(after, before, strict=True)] == [1, 0, 1]
 
 
 UNKNOWN_LINK = "https://unknown.example/page"

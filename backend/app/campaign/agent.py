@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.ai.prompt import Prompt, Turn
 from app.ai.service import AiService
-from app.brand.rules.evidence import Document, normalize
 from app.brand.models import Brand, BrandFile, Conflict, Fact
+from app.brand.rules.evidence import Document, normalize
 from app.brand.rules.settle import conflict_target, side_of_files, winning_fact_ids
 from app.campaign import prompts
 from app.campaign.brand_tools import CHANNEL_WORDS, BrandTools
@@ -60,7 +60,8 @@ class CampaignAgent:
         reply = self._ask("Brief review", prompts.REVIEW_TASK, prompts.REVIEW_SCHEMA)
         questions = [self._checked_question(q) for q in reply["questions"][: prompts.MAX_QUESTIONS]]
         return Review(
-            [q for q in questions if q], _clean(reply["brief_rules"]), _clean(reply["assumptions"])[: prompts.MAX_ASSUMPTIONS]
+            [q for q in questions if q], _clean(reply["brief_rules"]),
+            _clean(reply["assumptions"])[: prompts.MAX_ASSUMPTIONS]
         )
 
     def make_plan(self, history: str = "") -> tuple[dict[str, Any], list[str]]:
@@ -95,7 +96,8 @@ class CampaignAgent:
     def channels_in_use(self) -> list[str]:
         """Campaign channels the brand's current documents mention. All of them when none are mentioned."""
         return channels_mentioned(" ".join(
-            f"{d.path} {' '.join((d.card or {}).get('rules_on', []))} {' '.join((d.card or {}).get('mentions', {}).get('channels', []))}"
+            f"{d.path} {' '.join((d.card or {}).get('rules_on', []))} "
+            f"{' '.join((d.card or {}).get('mentions', {}).get('channels', []))}"
             for d in self._documents() if d.status == "current"
         ))
 

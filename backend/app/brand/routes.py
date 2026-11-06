@@ -1,24 +1,28 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.ai.deps import get_ai_transport
-from app.ai.transport import AiTransport
-from app.brand.files import IncomingFile, UnsafePath
-from app.ai.deps import get_ai_service
+from app.ai.deps import get_ai_service, get_ai_transport
 from app.ai.service import AiCallFailed, AiService
-from app.brand.files import storage_path
+from app.ai.transport import AiTransport
+from app.brand.files import IncomingFile, UnsafePath, storage_path
 from app.brand.images.library import BRAND_PAGE_PICK, pick
 from app.brand.images.picking import AssetSpec
 from app.brand.schemas import (
-    BlockedOut, BrandOut, BrandSummary, ChoiceOut, CorrectionIn, PickIn, PickOut, SummaryIn,
+    BlockedOut,
+    BrandOut,
+    BrandSummary,
+    ChoiceOut,
+    CorrectionIn,
+    PickIn,
+    PickOut,
+    SummaryIn,
 )
-from app.brand.views import file_url
 from app.brand.service import AlreadyReading, BadCorrection, BrandNotFound, BrandService, NothingToRead
-from app.brand.views import brand_view
+from app.brand.views import brand_view, file_url
 from app.config import Settings, get_settings
 from app.db import SessionLocal, get_session
 from app.jobs import JobRunner, get_job_runner
@@ -50,7 +54,7 @@ def _brand_or_404(brands: BrandService, brand_id: int):
     try:
         return brands.get(brand_id)
     except BrandNotFound:
-        raise HTTPException(404, "Brand not found")
+        raise HTTPException(404, "Brand not found") from None
 
 
 @router.get("", response_model=list[BrandSummary])
@@ -65,7 +69,7 @@ async def add_brand(brands: Brands, name: Annotated[str, Form()], files: Uploads
     try:
         return await run_in_threadpool(brands.create, name, incoming, exclude)
     except (UnsafePath, NothingToRead) as error:
-        raise HTTPException(400, str(error))
+        raise HTTPException(400, str(error)) from None
 
 
 @router.get("/{brand_id}", response_model=BrandOut)
@@ -81,9 +85,9 @@ async def update_brand(brand_id: int, brands: Brands, files: Uploads, exclude: E
     try:
         return await run_in_threadpool(brands.add_files, brand_id, incoming, exclude)
     except (UnsafePath, NothingToRead) as error:
-        raise HTTPException(400, str(error))
+        raise HTTPException(400, str(error)) from None
     except AlreadyReading as error:
-        raise HTTPException(409, str(error))
+        raise HTTPException(409, str(error)) from None
 
 
 @router.post("/{brand_id}/read", response_model=BrandSummary)
@@ -93,7 +97,7 @@ def read_again(brand_id: int, brands: Brands):
     try:
         brands.start_reading(brand_id)
     except AlreadyReading as error:
-        raise HTTPException(409, str(error))
+        raise HTTPException(409, str(error)) from None
     return brands.get(brand_id)
 
 
@@ -110,7 +114,7 @@ def correct(brand_id: int, body: CorrectionIn, brands: Brands, session: SessionD
     try:
         brands.correct(brand_id, body.kind, body.target, body.value)
     except BadCorrection as error:
-        raise HTTPException(400, str(error))
+        raise HTTPException(400, str(error)) from None
     session.refresh(brand)
     return brand_view(session, brands, brand)
 
@@ -136,7 +140,7 @@ def rebuild_summary(brand_id: int, brands: Brands):
     try:
         brands.rebuild_summary(brand_id)
     except AlreadyReading as error:
-        raise HTTPException(409, str(error))
+        raise HTTPException(409, str(error)) from None
     return brands.get(brand_id)
 
 
@@ -170,9 +174,10 @@ def pick_images(
     try:
         result = pick(session, ai, brand, spec, step=BRAND_PAGE_PICK)
     except AiCallFailed as failure:
-        raise HTTPException(502, f"The AI request failed: {failure}")
+        raise HTTPException(502, f"The AI request failed: {failure}") from None
     return PickOut(
-        choices=[ChoiceOut(path=c.path, url=file_url(brand_id, c.path), why=c.why, alt_text=c.alt_text) for c in result.choices],
+        choices=[ChoiceOut(path=c.path, url=file_url(brand_id, c.path), why=c.why, alt_text=c.alt_text)
+                 for c in result.choices],
         suggestion=result.suggestion,
         blocked=[BlockedOut(path=b.path, reason=b.reason) for b in result.blocked],
         call_id=result.call_id,

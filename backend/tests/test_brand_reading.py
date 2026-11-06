@@ -8,8 +8,8 @@ from sqlalchemy import select
 from app.ai.deps import get_ai_transport
 from app.ai.fake import FakeTransport
 from app.ai.transport import AiRequest
-from app.brand.reading import reader as reader_module
 from app.brand.models import BrandFile, Section
+from app.brand.reading import reader as reader_module
 from app.config import Settings, get_settings
 from app.db import SessionLocal
 from app.jobs import InlineJobRunner, get_job_runner

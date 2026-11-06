@@ -2,9 +2,8 @@
 from structured answers, not wording. Regression tests for Groups 6 and 7 of the design review. Fake AI and fake
 web search only."""
 
-from types import SimpleNamespace
-
 import json
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient

@@ -40,7 +40,8 @@ class FakeTransport:
         tokens_in = sum(len(str(m)) for m in request.to_payload(for_log=True)["input"]) // 4
         if isinstance(answer, CallTools):
             calls = tuple(
-                ToolCall(f"call_{len(self.requests)}_{i}", name, json.dumps(args)) for i, (name, args) in enumerate(answer.calls)
+                ToolCall(f"call_{len(self.requests)}_{i}", name, json.dumps(args))
+                for i, (name, args) in enumerate(answer.calls)
             )
             items = tuple(
                 {"type": "function_call", "call_id": c.call_id, "name": c.name, "arguments": c.arguments} for c in calls

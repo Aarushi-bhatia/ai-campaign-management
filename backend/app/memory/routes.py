@@ -13,8 +13,17 @@ from app.brand.models import Brand
 from app.chat.models import Message
 from app.db import get_session
 from app.memory.models import CampaignRecord, MemoryItem
-from app.memory.service import (KINDS, Memory, MemoryChanged, MemoryFull, core, history, item_out, replace_changed,
-                                undo_remembered)
+from app.memory.service import (
+    KINDS,
+    Memory,
+    MemoryChanged,
+    MemoryFull,
+    core,
+    history,
+    item_out,
+    replace_changed,
+    undo_remembered,
+)
 
 router = APIRouter(prefix="/api", tags=["memory"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -58,7 +67,7 @@ def add_memory(brand_id: int, body: MemoryIn, session: SessionDep, ai: Annotated
     try:
         item = Memory(session, ai).add(brand_id, body.text, body.kind, None)
     except MemoryFull as full:
-        raise HTTPException(409, str(full))
+        raise HTTPException(409, str(full)) from None
     if item is None:
         raise HTTPException(409, "That is already in memory.")
     changes = getattr(item, "changes", None)
@@ -93,7 +102,7 @@ def undo_remembered_note(message_id: int, session: SessionDep):
     try:
         undo_remembered(session, note)
     except (MemoryFull, MemoryChanged) as refused:
-        raise HTTPException(409, str(refused))
+        raise HTTPException(409, str(refused)) from None
 
 
 @router.post("/memory/notes/{message_id}/replace", status_code=204)
@@ -105,7 +114,7 @@ def replace_from_note(message_id: int, session: SessionDep):
     try:
         replace_changed(session, note)
     except MemoryChanged as refused:
-        raise HTTPException(409, str(refused))
+        raise HTTPException(409, str(refused)) from None
 
 
 @router.delete("/memory/{item_id}", status_code=204)

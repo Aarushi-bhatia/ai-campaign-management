@@ -2,8 +2,8 @@
 
 import re
 from collections.abc import Callable
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 import httpx

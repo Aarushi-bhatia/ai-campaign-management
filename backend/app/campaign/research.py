@@ -117,10 +117,12 @@ class CampaignResearch:
         if result.error:
             return f"Couldn't look for a better source for “{finding['query']}”: {result.error}. The finding is kept."
         if not result.findings:
-            return f"Looked for a better source for “{finding['query']}”: nothing new turned up, so the finding is kept."
+            return (f"Looked for a better source for “{finding['query']}”: nothing new turned up, "
+                    "so the finding is kept.")
         self.remove(finding_id)
         self.campaign.research = [*self.campaign.research, *result.findings]
-        return f"Looked for a better source for “{finding['query']}”: {_count(len(result.findings))}, replacing the old one."
+        return (f"Looked for a better source for “{finding['query']}”: {_count(len(result.findings))}, "
+                "replacing the old one.")
 
     def relink(self, research_changed: frozenset[str] = frozenset()) -> set[str]:
         """Ties each finding to the plan cards that still want it: the cards it was found for, while they are in

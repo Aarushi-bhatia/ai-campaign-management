@@ -132,7 +132,8 @@ class OpenAiTransport:
         items = tuple(item.model_dump(mode="json", exclude_none=True, by_alias=True) for item in response.output)
         return AiResult(
             tool_calls=tuple(
-                ToolCall(item["call_id"], item["name"], item["arguments"]) for item in items if item["type"] == "function_call"
+                ToolCall(item["call_id"], item["name"], item["arguments"])
+                for item in items if item["type"] == "function_call"
             ),
             output_items=items,
             text=json_part(response.output_text) if request.output_schema else response.output_text,

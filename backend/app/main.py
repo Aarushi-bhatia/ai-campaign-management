@@ -9,13 +9,13 @@ from app.ai.deps import get_ai_transport
 from app.brand.routes import router as brand_router
 from app.brand.startup import on_startup
 from app.calls.routes import router as calls_router
-from app.chat.routes import router as chat_router
 from app.campaign.runtime import Runtime
 from app.campaign.writing.queue import resume_interrupted
+from app.chat.routes import router as chat_router
 from app.config import get_settings
 from app.db import SessionLocal
-from app.memory.routes import router as memory_router
 from app.jobs import get_job_runner
+from app.memory.routes import router as memory_router
 from app.research.deps import get_web_research
 
 logging.basicConfig(level=logging.INFO)

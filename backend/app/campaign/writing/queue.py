@@ -6,12 +6,12 @@ from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import func, select
 
 from app.ai.models import AiCall
-from app.brand.reading import writing_rules
 from app.brand.models import Brand
+from app.brand.reading import writing_rules
 from app.campaign import stages
-from app.campaign.writing.assets import AssetWork
 from app.campaign.models import Asset, Campaign
 from app.campaign.runtime import Runtime
+from app.campaign.writing.assets import AssetWork
 from app.chat.models import Chat, Message
 from app.memory.service import Memory
 
@@ -125,7 +125,8 @@ def remembered_note(item) -> Message:
     note = "".join(f" Memory was full, so the oldest unpinned item was dropped: “{d['text']}”." for d in dropped)
     if changes:
         note += f" This changes “{changes['text']}”, which is still in memory: replace it, or keep both."
-    data = {"item_id": item.id, **({"dropped": dropped} if dropped else {}), **({"changes": changes} if changes else {})}
+    data = {"item_id": item.id, **({"dropped": dropped} if dropped else {}),
+            **({"changes": changes} if changes else {})}
     return Message(role="assistant", kind="memory", content=f"Remembered: {item.text}{note}", data=data)
 
 

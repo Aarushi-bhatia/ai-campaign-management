@@ -71,8 +71,8 @@ def run(name: str, brief: str) -> dict:
     if chat["campaign"]["stage"] != "plan_ready" or not chat["campaign"]["plan"]:
         raise BriefFailed(f"no plan: the campaign stopped at {chat['campaign']['stage']}")
     plan = chat["campaign"]["plan"]
-    print(f"[{name}] plan: {len(plan['assets'])} assets, {len(chat['campaign']['research'])} research findings. Approving…",
-          flush=True)
+    print(f"[{name}] plan: {len(plan['assets'])} assets, {len(chat['campaign']['research'])} research findings. "
+          "Approving…", flush=True)
     call("POST", f"/api/chats/{chat_id}/approve")
     deadline = time.monotonic() + WAIT_SECONDS
     while call("GET", f"/api/chats/{chat_id}")["campaign"]["stage"] != "done":
@@ -80,8 +80,10 @@ def run(name: str, brief: str) -> dict:
             raise BriefFailed(f"writing didn't finish in {WAIT_SECONDS}s")
         time.sleep(5)
     assets = call("GET", f"/api/chats/{chat_id}/assets")
-    edit = next((EDITS[a["type"]] for a in assets if a["type"] in ("linkedin_post", "x_post")), EDITS[assets[0]["type"]])
-    print(f"[{name}] {sum(a['state'] == 'done' for a in assets)} of {len(assets)} assets written. Edit: {edit}", flush=True)
+    edit = next((EDITS[a["type"]] for a in assets if a["type"] in ("linkedin_post", "x_post")),
+                EDITS[assets[0]["type"]])
+    print(f"[{name}] {sum(a['state'] == 'done' for a in assets)} of {len(assets)} assets written. Edit: {edit}",
+          flush=True)
     reply = call("POST", f"/api/chats/{chat_id}/messages", json={"content": edit})
     costs = call("GET", f"/api/chats/{chat_id}/costs")
     # The edit's own calls, as its message lists them: the totals before and after also caught the memory call
@@ -91,7 +93,8 @@ def run(name: str, brief: str) -> dict:
     folder = OUT / re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "brief.md").write_text(brief)
-    for file, data in (("chat.json", chat), ("assets.json", call("GET", f"/api/chats/{chat_id}/assets")), ("costs.json", costs)):
+    for file, data in (("chat.json", chat), ("assets.json", call("GET", f"/api/chats/{chat_id}/assets")),
+                       ("costs.json", costs)):
         (folder / file).write_text(json.dumps(data, indent=1, ensure_ascii=False))
     failed = [a["title"] for a in assets if a["state"] != "done"]
     if failed:
@@ -103,7 +106,8 @@ def run(name: str, brief: str) -> dict:
         "auto_fixed": sum(1 for a in assets if a["fixed"]), "cost_usd": costs["total"]["cost_usd"],
         "cache_hit_rate": costs["total"]["cache_hit_rate"], "tokens_in": costs["total"]["tokens_in"],
         "stages": {s["stage"]: s["cost_usd"] for s in costs["stages"]}, "edit": edit,
-        "edit_reply": reply[-1]["content"], "edit_cost_usd": edit_cost, "minutes": round((time.monotonic() - started) / 60, 1),
+        "edit_reply": reply[-1]["content"], "edit_cost_usd": edit_cost,
+        "minutes": round((time.monotonic() - started) / 60, 1),
     }
     (folder / "result.json").write_text(json.dumps(result, indent=1, ensure_ascii=False))
     print(f"[{name}] done in {result['minutes']} min, ${result['cost_usd']:.3f}, saved to {folder}", flush=True)
@@ -132,16 +136,19 @@ def attempt(name: str, brief: str) -> dict:
 
 
 def table(results: list[dict]) -> str:
-    rows = ["| Brief | Questions | Assets (written) | Total cost | Cache hit rate | Plan | Research | Writing | Checks | Typical edit |",
+    rows = ["| Brief | Questions | Assets (written) | Total cost | Cache hit rate | Plan | Research | Writing "
+            "| Checks | Typical edit |",
             "|---|---|---|---|---|---|---|---|---|---|"]
     for r in results:
         if "error" in r:
             rows.append(f"| {r['brief']} | failed: {r['error'][:80]} |||||||||")
             continue
         s = r["stages"]
-        rows.append(f"| {r['brief']} | {r['questions']} | {r['assets']} ({r['assets'] - len(r['failed'])}) | ${r['cost_usd']:.3f} | {r['cache_hit_rate']:.0%} | "
+        rows.append(f"| {r['brief']} | {r['questions']} | {r['assets']} ({r['assets'] - len(r['failed'])}) | "
+                    f"${r['cost_usd']:.3f} | {r['cache_hit_rate']:.0%} | "
                     f"${s.get('Questions', 0) + s.get('Plan', 0):.3f} | ${s.get('Research', 0):.3f} | "
-                    f"${s.get('Writing', 0) + s.get('Images', 0):.3f} | ${s.get('Checks', 0):.3f} | ${r['edit_cost_usd']:.4f} |")
+                    f"${s.get('Writing', 0) + s.get('Images', 0):.3f} | ${s.get('Checks', 0):.3f} | "
+                    f"${r['edit_cost_usd']:.4f} |")
     return "\n".join(rows)
 
 

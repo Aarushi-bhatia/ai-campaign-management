@@ -64,10 +64,18 @@ docker compose exec backend uv run pytest
 
 The tests drive the whole API with a fake AI and a fake web search, against a real Postgres test database. Small test brands are made up inside the tests, so nothing is tuned to the sample brand.
 
+Lint the backend with ruff (settings in `backend/pyproject.toml`):
+
+```bash
+docker compose exec backend uv run ruff check app tests scripts
+```
+
+The frontend's type check: `cd frontend && npm run typecheck`.
+
 ## Where things are
 
 - `backend/app/brand/`: reading a brand folder, conflicts, images, the Brand page.
-- `backend/app/campaign/`: the agent, research, writing, checks, edits, costs.
+- `backend/app/campaign/`: the agent, research, writing, checks, edits, costs. The chat runs through `service.py`, which hands each stage to `planning.py`, `asset_chat.py` or `remembering.py`.
 - `backend/app/memory/`: core memory and campaign history.
 - `backend/app/ai/`: the one path to OpenAI, with logging, prices and cache points.
 - `frontend/src/`: the React app.

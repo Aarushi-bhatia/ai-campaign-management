@@ -18,7 +18,8 @@ CHANNEL_OF = {"email": "email", "linkedin_post": "linkedin", "x_post": "x", "blo
 LINK_FIELDS = {"button_link", "link_url"}
 """Fields that hold the asset's own link, which is not a citation."""
 LINK = re.compile(r"https?://[^\s)\]>\"'`]+")
-_FORMERLY = re.compile(r"\b(formerly|previously|once called|renamed from|used to be called)\b[^.]{0,40}$", re.IGNORECASE)
+_FORMERLY = re.compile(r"\b(formerly|previously|once called|renamed from|used to be called)\b[^.]{0,40}$",
+                       re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -124,7 +125,8 @@ def _new_name_at(text: str, match: re.Match, new: str) -> bool:
     """True when the current name starts at the same place, so the old one is only part of it
     (an old name "Acme" inside the current "Acme Cloud")."""
     text = _straight(text)
-    return bool(new) and len(new) > len(match.group(0)) and text[match.start():match.start() + len(new)].lower() == new.lower()
+    return (bool(new) and len(new) > len(match.group(0))
+            and text[match.start():match.start() + len(new)].lower() == new.lower())
 
 
 X_LINK_LENGTH = 23

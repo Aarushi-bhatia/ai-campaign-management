@@ -6,11 +6,12 @@ from dataclasses import asdict
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.brand.reading import facts as fact_types
 from app.brand.images.library import image_views, rules_for
 from app.brand.images.notes import ASSET_CHANNELS
 from app.brand.images.picking import AssetSpec, blocked_reason
 from app.brand.models import Brand, Conflict, DocLink, Entity, Fact, ImageInfo, Section
+from app.brand.reading import facts as fact_types
+from app.brand.rules.settle import chosen_winner, conflict_target, decisions_of, winning_fact_ids
 from app.brand.schemas import (
     BrandOut,
     BrandSummary,
@@ -25,7 +26,6 @@ from app.brand.schemas import (
     ReadingCostOut,
 )
 from app.brand.service import BrandService
-from app.brand.rules.settle import chosen_winner, conflict_target, decisions_of, winning_fact_ids
 
 RULE_ORDER = {"needs_human": 0, "you": 1}
 
@@ -40,7 +40,8 @@ def brand_view(session: Session, brands: BrandService, brand: Brand) -> BrandOut
         documents=[
             DocumentOut(
                 id=d.id, path=d.path, tokens=(d.basics or {}).get("tokens", 0), sections=sections.get(d.id, 0),
-                facts=fact_counts.get(d.id, 0) if fact_types.counts(d.doc_type) else 0, basics=d.basics, card=d.card, card_error=d.card_error,
+                facts=fact_counts.get(d.id, 0) if fact_types.counts(d.doc_type) else 0, basics=d.basics,
+                card=d.card, card_error=d.card_error,
                 card_call_id=d.card_call_id, facts_error=d.facts_error, facts_call_id=d.facts_call_id,
                 doc_type=d.doc_type, status=d.status, status_reason=d.status_reason,
                 replaced_by=path_of.get(d.replaced_by_id) if d.replaced_by_id else None,
@@ -55,10 +56,10 @@ def brand_view(session: Session, brands: BrandService, brand: Brand) -> BrandOut
             for e in session.scalars(select(Entity).where(Entity.brand_id == brand.id).order_by(Entity.name))
         ],
         links=[
-            LinkOut(source=path_of[l.source_id], target=path_of[l.target_id], effect=l.effect, claim=l.claim,
-                    evidence=l.evidence)
-            for l in session.scalars(select(DocLink).where(DocLink.brand_id == brand.id))
-            if l.source_id in path_of and l.target_id in path_of
+            LinkOut(source=path_of[link.source_id], target=path_of[link.target_id], effect=link.effect,
+                    claim=link.claim, evidence=link.evidence)
+            for link in session.scalars(select(DocLink).where(DocLink.brand_id == brand.id))
+            if link.source_id in path_of and link.target_id in path_of
         ],
         decisions=[DecisionOut.model_validate(d) for d in brands.decisions(brand.id)],
         excluded=brands.exclusions(brand.id),
@@ -85,7 +86,8 @@ def _images(session: Session, brand: Brand) -> list[ImageOut]:
     out = []
     for view in image_views(session, brand.id):
         row = rows[path_to_file[view.path]]
-        restricted = [blocked_reason(view, AssetSpec(channel, "", "", slot="inline"), rules) for channel in ASSET_CHANNELS]
+        restricted = [blocked_reason(view, AssetSpec(channel, "", "", slot="inline"), rules)
+                      for channel in ASSET_CHANNELS]
         out.append(
             ImageOut(
                 id=view.id, path=view.path, url=file_url(brand.id, view.path), title=view.title,

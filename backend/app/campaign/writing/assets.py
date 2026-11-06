@@ -14,20 +14,28 @@ from sqlalchemy.orm import Session
 
 from app.ai.models import AiCall
 from app.ai.service import AiCallFailed, AiService
-from app.brand.reading import writing_rules
-from app.brand.rules.evidence import Document, normalize, sentences
 from app.brand.images import library
 from app.brand.images.channel_rules import ABOUT_IMAGES
 from app.brand.images.picking import AssetSpec, blocked_reason
 from app.brand.models import Brand, BrandFile
+from app.brand.reading import writing_rules
+from app.brand.rules.evidence import Document, normalize, sentences
 from app.campaign import prompts
-from app.campaign.writing import writer
 from app.campaign.brand_tools import BrandTools
 from app.campaign.checking.ai import ai_check
-from app.campaign.checking.free import (CHANNEL_OF, FREE_CHECKS, LINK, CheckRules, Problem, free_checks,
-                                  is_empty, plain_text)
+from app.campaign.checking.free import (
+    CHANNEL_OF,
+    FREE_CHECKS,
+    LINK,
+    CheckRules,
+    Problem,
+    free_checks,
+    is_empty,
+    plain_text,
+)
 from app.campaign.models import Asset, AssetVersion, Campaign
 from app.campaign.research import approved
+from app.campaign.writing import writer
 from app.config import ModelSize
 from app.memory.service import core_texts, recent_images
 
@@ -242,7 +250,8 @@ class AssetWork:
             raise NothingToUndo("There is no earlier version.")
         old = versions[target]
         asset.image = image_of(old, asset)
-        version = self._save(asset, "undo", Draft(old.content, warnings=self._rechecked(asset, old.content, old.warnings)),
+        version = self._save(asset, "undo",
+                             Draft(old.content, warnings=self._rechecked(asset, old.content, old.warnings)),
                              note=f"Back to version {target}",
                              based_on=target, expected=asset.version if base is None else base)
         return version
@@ -256,7 +265,8 @@ class AssetWork:
             raise NothingToUndo(f"Version {number} is already showing.")
         old = versions[number]
         asset.image = image_of(old, asset)
-        return self._save(asset, "restore", Draft(old.content, warnings=self._rechecked(asset, old.content, old.warnings)),
+        return self._save(asset, "restore",
+                          Draft(old.content, warnings=self._rechecked(asset, old.content, old.warnings)),
                           note=f"Back to version {number}",
                           based_on=number, expected=asset.version if base is None else base)
 
@@ -273,7 +283,8 @@ class AssetWork:
         card = self._card(asset)
         with self.session.no_autoflush:
             spec = self._spec(asset, card)
-            spec = replace(spec, message=f"{spec.message} The marketer asks for a different image: {wish or 'any other that fits'}",
+            spec = replace(spec, message=f"{spec.message} The marketer asks for a different image: "
+                                         f"{wish or 'any other that fits'}",
                            exclude_paths=frozenset({current}) if current else frozenset(),
                            used_paths=self._images_in_use(asset),
                            recent_paths=recent_images(self.session, self.brand.id, skip_campaign=self.campaign.id),
@@ -366,7 +377,8 @@ class AssetWork:
             banned=rules["banned"], old_names=rules["old_names"], limits=rules["limits"],
             approved_urls=frozenset(f["url"] for f in approved(self.campaign, asset.plan_id)) | self._known_links(),
             image_problem=self._image_problem(asset),
-            hashtag_max=min((r["max"] for r in rules["hashtags"] if r["channel"] == CHANNEL_OF[asset.type]), default=None),
+            hashtag_max=min((r["max"] for r in rules["hashtags"] if r["channel"] == CHANNEL_OF[asset.type]),
+                            default=None),
         )
 
     def _known_links(self) -> frozenset[str]:
@@ -412,16 +424,22 @@ class AssetWork:
         current = self.session.scalar(select(Asset.version).where(Asset.id == asset.id).with_for_update())
         if expected is not None and current != expected:
             self.session.rollback()
-            raise AssetChanged(f"Someone changed “{asset.title}” (in another tab or in the chat), so your change wasn't "
-                               f"saved. It's now at version {current}. Look at the latest version and make your change again.")
+            raise AssetChanged(f"Someone changed “{asset.title}” (in another tab or in the chat), so your change "
+                               f"wasn't saved. It's now at version {current}. Look at the latest version and make "
+                               "your change again.")
         cost = self.session.scalar(select(func.coalesce(func.sum(AiCall.cost_usd), 0.0))
                                    .where(AiCall.id.in_(draft.call_ids))) if draft.call_ids else 0.0
         latest = self.session.scalar(select(func.max(AssetVersion.number)).where(AssetVersion.asset_id == asset.id))
         number = (latest or 0) + 1
-        version = AssetVersion(number=number, reason=reason, note=note, content=draft.content, image=asset.image,
+        # A version records "no image" as {}, so it can't be mistaken for one saved before images were kept (None).
+        image = asset.image if asset.image is not None else {}
+        version = AssetVersion(number=number, reason=reason, note=note, content=draft.content, image=image,
                                warnings=draft.warnings, call_ids=draft.call_ids, cost_usd=cost, based_on=based_on)
         asset.versions.append(version)
         asset.content, asset.version = draft.content, number
+        # An email is called by its subject and a blog post by its title, so a new subject renames it everywhere.
+        headline = str((draft.content or {}).get(writer.HEADLINE.get(asset.type, ""), "")).strip()
+        asset.title = headline or asset.title
         self._set_checks(asset, draft)
         self.session.commit()
         return version
@@ -458,7 +476,8 @@ class AssetWork:
         image = asset.image or {}
         picture = f"image {image['path']}" if image.get("path") else (
             f"no image ({image['suggestion']})" if image.get("suggestion") else "no image")
-        parts = [f"{writer.TYPE_LABELS[asset.type]} “{asset.title}” written. Looked up {', '.join(asset.looked_up)}; {picture}."]
+        parts = [f"{writer.TYPE_LABELS[asset.type]} “{asset.title}” written. "
+                 f"Looked up {', '.join(asset.looked_up)}; {picture}."]
         fixes = [line for line in checked.fixed if not line.startswith(KEPT)]
         if fixes:
             parts.append(f"Fixed: {'; '.join(fixes)}.")
@@ -498,9 +517,12 @@ class AssetWork:
 
 
 def image_of(version: AssetVersion, asset: Asset) -> dict[str, Any] | None:
-    """The image a version had. Versions saved before images were kept have none recorded, so the asset keeps
-    the one it has rather than losing it."""
-    return version.image if version.image is not None or version.reason == "image change" else asset.image
+    """The image a version had. {} means it had none. Versions saved before images were kept have nothing
+    recorded (None, except an image change taking one off), so the asset keeps the one it has rather than
+    losing it."""
+    if version.image is None and version.reason != "image change":
+        return asset.image
+    return version.image or None
 
 
 def text_source(session: Session, asset: Asset) -> tuple[int | None, bool]:
@@ -527,7 +549,8 @@ def unfinished_checks(error: Exception) -> list[dict[str, str]]:
     shown as well; "not checked" stays either way, until Check again succeeds."""
     if isinstance(error, AiCheckFailed):
         return [*(p.to_dict() for p in error.free),
-                {"check": "not checked", "quote": "", "problem": f"The AI check couldn't run ({error}). Press Check again."}]
+                {"check": "not checked", "quote": "",
+                 "problem": f"The AI check couldn't run ({error}). Press Check again."}]
     return [{"check": "not checked", "quote": "", "problem": f"The checks couldn't run ({error}). Press Check again."}]
 
 

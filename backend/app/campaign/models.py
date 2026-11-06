@@ -24,7 +24,8 @@ class Campaign(TimestampMixin, Base):
     """Points where the brief overrides the brand's documents, for this campaign only."""
     assumptions: Mapped[list[str]] = mapped_column(JSONB, default=list)
     plan: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    """{"summary": ..., "assets": [{"id", "type", "title", "audience", "main_message", "date", "image_idea", "notes"}]}"""
+    """{"summary": ..., "assets": [{"id", "type", "title", "audience", "main_message", "date", "image_idea",
+    "notes"}]}"""
     plan_version: Mapped[int] = mapped_column(Integer, default=0)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     noted_conflicts: Mapped[list[int]] = mapped_column(JSONB, default=list)

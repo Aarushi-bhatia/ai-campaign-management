@@ -1,15 +1,16 @@
 from dataclasses import dataclass
+from itertools import pairwise
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.ai.models import AiCall
 from app.ai.transport import AiTransport
-from app.brand.reading import cards
 from app.brand import files as brand_files
 from app.brand.files import IncomingFile, UnsafePath
 from app.brand.images.library import BRAND_PAGE_PICK
 from app.brand.models import Brand, BrandDecision, BrandFile
+from app.brand.reading import cards
 from app.brand.reading.parsing import decode
 from app.brand.reading.reader import BrandReader
 from app.brand.rules.settle import same_conflict, settle
@@ -219,7 +220,7 @@ def _check_paths(existing: set[str], incoming: list[IncomingFile]) -> None:
     """Refuses, before anything is written, an upload where one path is a file and also a folder ("a.md" and
     "a.md/b.md"): it can't be stored, and would fail halfway, leaving some files written."""
     paths = sorted(existing | {f.path for f in incoming})
-    for path, after in zip(paths, paths[1:]):
+    for path, after in pairwise(paths):
         if after.startswith(f"{path}/"):
             raise UnsafePath(f"“{path}” is both a file and a folder, so nothing was saved. Rename one of them.")
 

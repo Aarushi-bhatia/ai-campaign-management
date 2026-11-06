@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -132,7 +133,7 @@ def split_sections(text: str) -> list[SectionDraft]:
     blocks: list[tuple[str, str]] = []
     boundaries = [0, *(line for line, _ in starts), len(lines)]
     heading_at = dict(starts)
-    for begin, end in zip(boundaries, boundaries[1:]):
+    for begin, end in pairwise(boundaries):
         if begin == end:
             continue
         heading = heading_at.get(begin)

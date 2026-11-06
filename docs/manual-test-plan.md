@@ -110,7 +110,7 @@ This is the most important list. Check every piece the app writes against it.
 
 ❌ You should NOT see:
 - A question about something the brief already says (the dates, which pieces to make, who it's for).
-- A note saying "Your brief changes a brand rule, for this campaign only: …" before you've answered anything. The app must never decide that alone. If the brief would change a brand rule, you get a question instead: "Your brief would change a brand rule: … Allow that for this campaign?", with "No, keep the brand rule" first.
+- A note saying "Your brief changes a brand rule, for this campaign only: …" before you've answered anything. The app must never decide that alone. If the brief would change a brand rule, you get a question instead: "Your brief would change a brand rule: … Allow that for this campaign?", with "No, keep the brand rule" first. Typing "yes" or "no" instead of clicking counts the same; an unclear answer ("maybe") is asked again.
 
 **A2. Answer the questions.** Click the first (safe) button on each one, except for the question about Tesserline (the competitor). For that one, type:
 "Keep Tesserline out of social, but the blog post can compare approaches without naming anyone."
@@ -282,7 +282,7 @@ Then type "Wickhold Security" and save. ✅ You should see an "old name" warning
 ✅ You should see:
 - The landing page gets a different image, as a new version. Its text stays exactly the same.
 - The reply says which image it now uses and why, with its cost (about a cent).
-- Undo brings the old image back.
+- Undo brings the old image back. If the piece had no image before, Undo takes the new one off again.
 - If no other image fits, the reply says so and nothing changes.
 - Then type "No image on the X post": it says it took the image off (or that it already has none).
 

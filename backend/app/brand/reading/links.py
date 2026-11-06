@@ -35,7 +35,8 @@ SCHEMA = OutputSchema(
     schema=strict_object(
         {
             "links": array_of(
-                strict_object({"statement": {"type": "integer"}, "target_id": {"type": "integer"}, "effect": enum(*EFFECTS)})
+                strict_object({"statement": {"type": "integer"}, "target_id": {"type": "integer"},
+                               "effect": enum(*EFFECTS)})
             )
         }
     ),

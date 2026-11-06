@@ -149,7 +149,8 @@ class ImageSteps:
             session.commit()
         self.bump(brand_id)
 
-    def _notes_batch(self, brand_id: int, batch: list[tuple[int, str, dict]], brand_rules: list[str], rules_hash: str) -> None:
+    def _notes_batch(self, brand_id: int, batch: list[tuple[int, str, dict]], brand_rules: list[str],
+                     rules_hash: str) -> None:
         with self.sessions() as session:
             try:
                 reply = AiService(session, self.transport, self.settings, self.sessions).complete(

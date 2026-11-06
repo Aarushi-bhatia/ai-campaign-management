@@ -6,16 +6,24 @@ from sqlalchemy import select
 
 from app.ai.fake import FakeTransport
 from app.ai.service import AiService
+from app.brand.images.picking import AssetSpec, rank_prompt
 from app.campaign import agent
 from app.campaign.models import Campaign
-from app.chat.models import Chat, Message
 from app.campaign.writing.queue import remembered_note
+from app.chat.models import Chat, Message
 from app.config import Settings
 from app.db import SessionLocal
-from app.brand.images.picking import AssetSpec, rank_prompt
 from app.memory.models import CampaignRecord, MemoryItem
-from app.memory.service import (HISTORY_IN_PLANNING, Memory, MemoryFull, changes_meaning, history, near_duplicate,
-                                recent_images, undo_remembered)
+from app.memory.service import (
+    HISTORY_IN_PLANNING,
+    Memory,
+    MemoryFull,
+    changes_meaning,
+    history,
+    near_duplicate,
+    recent_images,
+    undo_remembered,
+)
 from tests import brand_brain
 
 BRIEF = "Launch Acme Widget to platform leads on January 26. One email, one LinkedIn post, one X post."
@@ -175,7 +183,7 @@ def test_a_finished_campaign_gets_a_history_record(client: TestClient, brand: in
 
     history = client.get(f"/api/brands/{brand}/memory").json()["history"]
     assert [(h["name"], h["chat_id"], h["dates"]) for h in history] == [("Widget launch", chat_id, "2027-01-26")]
-    assert history[0]["assets"] == ["email: Launch email", "linkedin_post: Launch post", "x_post: X launch post"]
+    assert history[0]["assets"] == ["email: Meet Acme Widget", "linkedin_post: Launch post", "x_post: X launch post"]
 
 
 def test_campaign_history_is_only_used_when_planning(client: TestClient, brand: int, fake_ai: FakeTransport):

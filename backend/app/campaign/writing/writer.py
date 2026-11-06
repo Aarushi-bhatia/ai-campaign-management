@@ -31,6 +31,9 @@ FIELDS: dict[str, dict[str, Any]] = {
 }
 """The fixed fields of each asset type. Every asset also lists the research sources it used."""
 
+HEADLINE = {"email": "subject", "blog_post": "title"}
+"""The field that is the asset's own name, where it has one: the asset is called by it once written."""
+
 GUIDE = {
     "email": "sender is the person or team it comes from, per the brief or the email rules. sections are the "
              "body in order: short, with a heading only where it helps (\"\" otherwise). button_link: a link from "
@@ -154,7 +157,8 @@ def campaign_text(campaign: Campaign) -> str:
 
 def research_text(research: list[dict[str, Any]]) -> str:
     """One line per finding; the url stands alone, so it can be copied into sources exactly."""
-    return "\n".join(f"[{f['id']}] {f['finding']} (dated {f['date']}) (source: {f['url']})" for f in research) or "(none)"
+    return "\n".join(f"[{f['id']}] {f['finding']} (dated {f['date']}) (source: {f['url']})"
+                     for f in research) or "(none)"
 
 
 def prompt(fixed: str, campaign: Campaign, task: str) -> Prompt:
@@ -174,15 +178,18 @@ def write_task(number: int, card: dict[str, Any], image: dict[str, Any] | None, 
 
 def image_line(image: dict[str, Any] | None) -> str:
     if image and image.get("path"):
-        return f"The image chosen for it is {image['path']}: {image.get('alt_text', '')}. Write around it; don't describe it."
+        return (f"The image chosen for it is {image['path']}: {image.get('alt_text', '')}. "
+                "Write around it; don't describe it.")
     return "It has no image."
 
 
 def fix_task(asset_type: str, content: dict[str, Any], problems: list[dict[str, str]],
              research: list[dict[str, Any]], rules: str, facts: str) -> str:
     """The same channel rules and facts the writer had, so "supported" is judged against the evidence."""
-    lines = "\n".join(f"- {p['check']}: {p['problem']}" + (f" (“{p['quote']}”)" if p.get("quote") else "") for p in problems)
-    return FIX_TASK.format(label=TYPE_LABELS[asset_type], problems=lines, content=json.dumps(content, ensure_ascii=False),
+    lines = "\n".join(f"- {p['check']}: {p['problem']}" + (f" (“{p['quote']}”)" if p.get("quote") else "")
+                      for p in problems)
+    return FIX_TASK.format(label=TYPE_LABELS[asset_type], problems=lines,
+                           content=json.dumps(content, ensure_ascii=False),
                            research=research_text(research), rules=rules, facts=facts)
 
 
@@ -215,7 +222,8 @@ def _shape(schema: dict[str, Any], value: Any, where: str) -> str | None:
     elif schema["type"] == "array":
         if not isinstance(value, list):
             return f"{where} must be a list."
-        return next((p for i, item in enumerate(value) if (p := _shape(schema["items"], item, f"{where} {i + 1}"))), None)
+        return next((p for i, item in enumerate(value) if (p := _shape(schema["items"], item, f"{where} {i + 1}"))),
+                    None)
     elif schema["type"] == "object":
         if not isinstance(value, dict):
             return f"{where} must have the fields {', '.join(schema['properties'])}."

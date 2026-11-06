@@ -12,6 +12,8 @@ export function MemoryPage({ brandId, onOpenChat }: Props) {
   const [adding, setAdding] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const memory = useQuery({ queryKey: ["memory", brandId], queryFn: () => api.getMemory(brandId) });
+  const brands = useQuery({ queryKey: ["brands"], queryFn: api.listBrands });
+  const brandName = brands.data?.find((b) => b.id === brandId)?.name;
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["memory", brandId] });
   const add = useMutation({
     mutationFn: (text: string) => api.addMemory(brandId, text, "preference"),
@@ -30,7 +32,7 @@ export function MemoryPage({ brandId, onOpenChat }: Props) {
   return (
     <div className="min-w-0 flex-1 overflow-y-auto bg-white">
       <div className="mx-auto max-w-3xl p-8">
-        <h1 className="text-xl font-medium">Memory</h1>
+        <h1 className="text-xl font-medium">Memory{brandName ? `: ${brandName}` : ""}</h1>
         <p className="mt-1 text-sm text-stone-600">
           What the agent keeps between campaigns for this brand. New items are saved from your chats, with an Undo note there.
         </p>

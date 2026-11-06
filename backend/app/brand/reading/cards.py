@@ -14,10 +14,11 @@ from app.brand.rules.evidence import Document
 CARD_VERSION = 2
 """Raise this when the prompt or schema changes, so existing cards are written again."""
 
-KINDS = ["rule", "reference", "example", "template", "persona", "case_study", "press", "internal_note", "index", "other"]
+KINDS = ["rule", "reference", "example", "template", "persona", "case_study", "press", "internal_note", "index",
+         "other"]
 STATUSES = ["current", "replaced", "draft", "archived", "unknown"]
 
-INSTRUCTIONS = f"""\
+INSTRUCTIONS = """\
 You write a short card describing one document from a company's brand folder. A later step \
 compares all the cards, so record what this document says. Don't judge it against other documents.
 
@@ -61,8 +62,10 @@ SCHEMA = OutputSchema(
             "safe_to_quote": strict_object({"value": enum("yes", "no", "unknown"), "evidence": TEXT}),
             "rules_on": TEXT_LIST,
             "replaces": array_of(strict_object({"document": TEXT, "evidence": TEXT})),
-            "claims_about_other_documents": array_of(strict_object({"document": TEXT, "claim": TEXT, "evidence": TEXT})),
-            "mentions": strict_object({"products": TEXT_LIST, "channels": TEXT_LIST, "customers": TEXT_LIST, "people": TEXT_LIST}),
+            "claims_about_other_documents": array_of(strict_object({"document": TEXT, "claim": TEXT,
+                                                                    "evidence": TEXT})),
+            "mentions": strict_object({"products": TEXT_LIST, "channels": TEXT_LIST, "customers": TEXT_LIST,
+                                       "people": TEXT_LIST}),
         }
     ),
 )
@@ -70,7 +73,8 @@ SCHEMA = OutputSchema(
 
 def prompt_for(path: str, basics: dict[str, Any], text: str) -> Prompt:
     hints = {key: basics[key] for key in ("frontmatter", "top_labels", "name_hints") if basics.get(key)}
-    task = f"File path: {path}\nHints found without AI: {json.dumps(hints, ensure_ascii=False)}\n\n--- DOCUMENT ---\n{text}"
+    task = (f"File path: {path}\nHints found without AI: {json.dumps(hints, ensure_ascii=False)}\n\n"
+            f"--- DOCUMENT ---\n{text}")
     return Prompt(fixed=INSTRUCTIONS, task=[Turn(role="user", content=task)])
 
 
@@ -80,46 +84,64 @@ def checked_card(raw_reply: str, document: str) -> dict[str, Any]:
     Removed claims are kept under `unverified`, so the Brand page can show what was dropped. A quote that is
     only the claimed value, or a single word, isn't proof (see `Document.proves`).
     """
-    card: dict[str, Any] = json.loads(raw_reply)
-    source = Document(document)
-    unverified: list[dict[str, str]] = []
+    check = _CardCheck(json.loads(raw_reply), Document(document))
+    check.claimed_status()
+    check.date()
+    check.owner()
+    check.safe_to_quote()
+    check.lists()
+    check.card["unverified"] = check.unverified
+    return check.card
 
-    def found(evidence: str, value: str = "") -> bool:
-        return source.proves(evidence, value)
 
-    def drop(field: str, value: str, evidence: str) -> None:
-        unverified.append({"field": field, "value": value, "evidence": evidence})
+class _CardCheck:
+    """Checks a card one field at a time. A claim without proof is emptied and listed in `unverified`."""
 
-    status = card["claimed_status"]
-    if status["value"] != "unknown" and not found(status["evidence"], status["value"]):
-        drop("claimed_status", status["value"], status["evidence"])
-        card["claimed_status"] = {"value": "unknown", "evidence": ""}
+    def __init__(self, card: dict[str, Any], source: Document) -> None:
+        self.card = card
+        self.unverified: list[dict[str, str]] = []
+        self._source = source
 
-    date = card["date"]
-    if (date["as_written"] or date["iso"]) and not found(date["evidence"]):
-        drop("date", date["as_written"], date["evidence"])
-        card["date"] = {"as_written": "", "iso": "", "evidence": ""}
-    elif not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date["iso"]):
-        date["iso"] = ""
+    def claimed_status(self) -> None:
+        status = self.card["claimed_status"]
+        if status["value"] != "unknown" and not self._found(status["evidence"], status["value"]):
+            self._drop("claimed_status", status["value"], status["evidence"])
+            self.card["claimed_status"] = {"value": "unknown", "evidence": ""}
 
-    owner = card["owner"]
-    if owner["name"] and not found(owner["evidence"], owner["name"]):
-        drop("owner", owner["name"], owner["evidence"])
-        card["owner"] = {"name": "", "role": "", "evidence": ""}
+    def date(self) -> None:
+        """Also clears an ISO date that isn't one, keeping the date as written."""
+        date = self.card["date"]
+        if (date["as_written"] or date["iso"]) and not self._found(date["evidence"]):
+            self._drop("date", date["as_written"], date["evidence"])
+            self.card["date"] = {"as_written": "", "iso": "", "evidence": ""}
+        elif not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date["iso"]):
+            date["iso"] = ""
 
-    safe = card["safe_to_quote"]
-    if safe["value"] != "unknown" and not found(safe["evidence"]):
-        drop("safe_to_quote", safe["value"], safe["evidence"])
-        card["safe_to_quote"] = {"value": "unknown", "evidence": ""}
+    def owner(self) -> None:
+        owner = self.card["owner"]
+        if owner["name"] and not self._found(owner["evidence"], owner["name"]):
+            self._drop("owner", owner["name"], owner["evidence"])
+            self.card["owner"] = {"name": "", "role": "", "evidence": ""}
 
-    for field, label in (("replaces", "document"), ("claims_about_other_documents", "claim")):
-        kept = []
-        for item in card[field]:
-            if found(item["evidence"]):
-                kept.append(item)
-            else:
-                drop(field, item[label], item["evidence"])
-        card[field] = kept
+    def safe_to_quote(self) -> None:
+        safe = self.card["safe_to_quote"]
+        if safe["value"] != "unknown" and not self._found(safe["evidence"]):
+            self._drop("safe_to_quote", safe["value"], safe["evidence"])
+            self.card["safe_to_quote"] = {"value": "unknown", "evidence": ""}
 
-    card["unverified"] = unverified
-    return card
+    def lists(self) -> None:
+        """What it says about other documents: each item stays only with its own proof."""
+        for field, label in (("replaces", "document"), ("claims_about_other_documents", "claim")):
+            kept = []
+            for item in self.card[field]:
+                if self._found(item["evidence"]):
+                    kept.append(item)
+                else:
+                    self._drop(field, item[label], item["evidence"])
+            self.card[field] = kept
+
+    def _found(self, evidence: str, value: str = "") -> bool:
+        return self._source.proves(evidence, value)
+
+    def _drop(self, field: str, value: str, evidence: str) -> None:
+        self.unverified.append({"field": field, "value": value, "evidence": evidence})

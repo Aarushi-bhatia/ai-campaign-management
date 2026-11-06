@@ -10,6 +10,8 @@ export type QuestionData = {
   remaining: number;
   /** Asked before the plan was approved and left open; it no longer applies. */
   expired?: boolean;
+  /** What was typed here when it was neither yes nor no; the question was shown again below. */
+  asked_again?: string;
 };
 
 export type Message = {
@@ -151,6 +153,9 @@ export type ChatSummary = {
   id: number;
   title: string;
   created_at: string;
+  /** The brand the chat's campaign uses (for a chat from before campaigns, the one it gets when opened); null
+   * only when no brand exists. */
+  brand_id: number | null;
 };
 
 export type Chat = ChatSummary & {
